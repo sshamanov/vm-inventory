@@ -22,6 +22,7 @@ coverage.html
 Thumbs.db
 
 # Docker
+docker-compose.yml
 docker-compose.override.yml
 
 # State data
