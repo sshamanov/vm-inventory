@@ -13,7 +13,6 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -58,24 +57,3 @@ jobs:
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
             ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.ref_name }}
 
-      - name: Push exporter binary to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/bin.Dockerfile
-          build-args: BINARY=inventory-exporter
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/inventory-exporter:${{ github.ref_name }}-bin
-            ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest-bin
-
-      - name: Push backend binary to GHCR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/bin.Dockerfile
-          build-args: BINARY=inventory-backend
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.ref_name }}-bin
-            ${{ env.IMAGE_PREFIX }}/inventory-backend:latest-bin

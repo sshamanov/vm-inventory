@@ -32,16 +32,6 @@ docker-backend: build-backend
 	docker build --network host -f docker/backend.Dockerfile \
 		-t inventory-backend:latest .
 
-docker-bin-exporter: build-exporter
-	docker build --network host -f docker/bin.Dockerfile \
-		--build-arg BINARY=inventory-exporter \
-		-t inventory-exporter-bin .
-
-docker-bin-backend: build-backend
-	docker build --network host -f docker/bin.Dockerfile \
-		--build-arg BINARY=inventory-backend \
-		-t inventory-backend-bin .
-
 docker-all: docker-exporter docker-backend
 
 # --- Docker Compose ---
