@@ -79,8 +79,9 @@ jobs:
                 --arg commit    "${{ github.sha }}" \
                 --arg source    "${{ github.server_url }}/${{ github.repository }}" \
                 --arg desc      "$desc" \
+                --argjson run  ${{ github.run_number }} \
                 --arg b64       "$b64" \
-                '{name: $name, version: $version, file_hash: $file_hash, commit: $commit, source: $source, description: $desc, binary: $b64}')" \
+                '{name: $name, version: $version, run: $run, file_hash: $file_hash, commit: $commit, source: $source, description: $desc, binary: $b64}')" \
               "${FILESERVICE_URL}" || echo "WARN: upload of $name failed"
 
             echo "Uploaded $name sha256:$file_hash commit:${{ github.sha }}"
