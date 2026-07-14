@@ -1,0 +1,18 @@
+# Example Linux exporter configuration (§7.1).
+mode: linux
+
+host:
+  id: hv-kvm-01
+  description: Main KVM and LXD host
+  geo: belgrade
+
+collection:
+  interval: 15m
+  timeout: 5m
+  max_snapshot_age: 8h
+
+collectors:
+  libvirt:
+    enabled: true
+  lxd:
+    enabled: true

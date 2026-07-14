@@ -18,14 +18,16 @@ import (
 
 // Handler serves the inventory HTTP API (§17).
 type Handler struct {
-	idx          *index.ObservationIndex
-	normalizer   *normalizer.Normalizer
-	promClient   *prometheus.Client
-	stateStore   *state.Store
-	snapshotMu   sync.Mutex // serializes refresh
-	publishMu    sync.Mutex // serializes publication
-	etag         string
-	logger       *slog.Logger
+	idx            *index.ObservationIndex
+	normalizer     *normalizer.Normalizer
+	promClient     *prometheus.Client
+	stateStore     *state.Store
+	snapshotMu     sync.Mutex // serializes refresh
+	publishMu      sync.Mutex // serializes publication
+	cachedSnapshot []byte
+	cachedEtag     string
+	cacheMu        sync.RWMutex
+	logger         *slog.Logger
 }
 
 // NewHandler creates a new API handler.
@@ -59,24 +61,41 @@ func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := h.normalizer.BuildUISnapshot()
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		h.logger.Error("failed to marshal inventory", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
+	// Use cached snapshot if available; rebuild only when stale.
+	h.cacheMu.RLock()
+	snapshot := h.cachedSnapshot
+	etag := h.cachedEtag
+	h.cacheMu.RUnlock()
+
+	if snapshot == nil {
+		snapshot, etag = h.rebuildSnapshot()
 	}
 
-	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(data))
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("ETag", etag)
 
-	if match := r.Header.Get("If-None-Match"); match == etag {
+	if match := r.Header.Get("If-None-Match"); match == etag && etag != "" {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 
-	w.Write(data)
+	w.Write(snapshot)
+}
+
+func (h *Handler) rebuildSnapshot() ([]byte, string) {
+	s := h.normalizer.BuildUISnapshot()
+	data, err := json.Marshal(s)
+	if err != nil {
+		return nil, ""
+	}
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(data))
+
+	h.cacheMu.Lock()
+	h.cachedSnapshot = data
+	h.cachedEtag = etag
+	h.cacheMu.Unlock()
+
+	return data, etag
 }
 
 // GET /api/status (§17.3) — returns cache and publication status.
@@ -153,6 +172,9 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	st.LastSuccessfulRefresh = &now
 	h.stateStore.Save(st)
+
+	// Rebuild cached snapshot after refresh.
+	h.rebuildSnapshot()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
