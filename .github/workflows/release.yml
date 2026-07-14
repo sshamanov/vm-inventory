@@ -31,16 +31,6 @@ jobs:
         run: |
           go build -ldflags="-s -w" -o bin/inventory-backend ./cmd/inventory-backend/
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            bin/inventory-exporter
-            bin/inventory-backend
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -67,3 +57,25 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
             ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.ref_name }}
+
+      - name: Push exporter binary to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/bin.Dockerfile
+          build-args: BINARY=inventory-exporter
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/inventory-exporter:${{ github.ref_name }}-bin
+            ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest-bin
+
+      - name: Push backend binary to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/bin.Dockerfile
+          build-args: BINARY=inventory-backend
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.ref_name }}-bin
+            ${{ env.IMAGE_PREFIX }}/inventory-backend:latest-bin
