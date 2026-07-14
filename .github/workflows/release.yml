@@ -53,22 +53,10 @@ jobs:
         with:
           context: .
           file: docker/exporter.Dockerfile
-          target: linux-exporter
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:${{ github.ref_name }}
-
-      - name: Build and push ESXi exporter image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/exporter.Dockerfile
-          target: esxi-exporter
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/inventory-esxi-exporter:latest
-            ${{ env.IMAGE_PREFIX }}/inventory-esxi-exporter:${{ github.ref_name }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5

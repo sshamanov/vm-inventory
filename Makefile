@@ -26,19 +26,13 @@ build-backend:
 
 docker-exporter: build-exporter
 	docker build --network host -f docker/exporter.Dockerfile \
-		--target linux-exporter \
 		-t inventory-exporter:latest .
-
-docker-esxi-exporter: build-exporter
-	docker build --network host -f docker/exporter.Dockerfile \
-		--target esxi-exporter \
-		-t inventory-esxi-exporter:latest .
 
 docker-backend: build-backend
 	docker build --network host -f docker/backend.Dockerfile \
 		-t inventory-backend:latest .
 
-docker-all: docker-exporter docker-esxi-exporter docker-backend
+docker-all: docker-exporter docker-backend
 
 # --- Docker Compose ---
 

@@ -1,43 +1,22 @@
-# ESXi exporter — external Docker-ready collector (§7.2).
-# Collects multiple standalone ESXi hosts without vCenter.
-# The Prometheus server scrapes this exporter at its /metrics endpoint.
+# ESXi exporter — single Docker image for both Linux and ESXi modes.
+# The mode is determined by the YAML config, not the image.
 #
 # Usage:
-#   1. Create an ESXi config file:
+#   1. Create config:
 #        cp config/exporter-esxi.yaml.example config/esxi.yaml
-#        # Edit with your ESXi targets and credentials.
 #        chmod 600 config/esxi.yaml
-#   2. Start the exporter:
-#        docker-compose -f docker-compose.esxi-exporter.yml up -d
-#   3. Verify:
-#        curl http://localhost:9101/metrics
-#
-# Prometheus scrape config (add to prometheus.yml):
-#   scrape_configs:
-#     - job_name: inventory-esxi
-#       scrape_interval: 1m
-#       static_configs:
-#         - targets: ['<docker-host>:9101']
+#   2. docker-compose -f docker-compose.esxi-exporter.yml up -d
+#   3. curl http://localhost:9101/metrics
 
 version: "3.8"
 
 services:
-  esxi-exporter:
-    build:
-      context: .
-      dockerfile: docker/exporter.Dockerfile
-      target: esxi-exporter
-      network: host
-    container_name: inventory-esxi-exporter
+  exporter:
+    image: ghcr.io/sshamanov/inventory-exporter:latest
+    container_name: inventory-exporter
     network_mode: host
     ports:
       - "9101:9101"
     volumes:
       - ./config/esxi.yaml:/etc/inventory-exporter/config.yaml:ro
-      - ./config/web-config.yaml:/etc/inventory-exporter/web-config.yaml:ro
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9101/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
