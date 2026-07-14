@@ -1,0 +1,24 @@
+# Example ESXi exporter configuration (§7.2).
+mode: esxi
+
+collection:
+  interval: 15m
+  timeout: 5m
+  max_snapshot_age: 8h
+
+targets:
+  - host_id: esxi-01
+    host_description: Primary ESXi host
+    geo: belgrade
+    address: https://esxi-01.internal
+    username: inventory-reader
+    password: changeme
+    insecure_skip_verify: false
+
+  # - host_id: esxi-02
+  #   host_description: Secondary ESXi host
+  #   geo: belgrade
+  #   address: https://esxi-02.internal
+  #   username: inventory-reader
+  #   password: changeme
+  #   insecure_skip_verify: false

@@ -1,26 +1,24 @@
-# Build stage
-FROM golang:1.22-alpine AS build
+# Run `make build-exporter` first to produce bin/inventory-exporter.
+# Then: docker build --network host -f docker/exporter.Dockerfile --target linux-exporter -t inventory-exporter .
 
-WORKDIR /src
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-# Static build: Linux AMD64, no CGO
-ARG CGO_ENABLED=0
-ARG GOOS=linux
-ARG GOARCH=amd64
-
-RUN go build -ldflags="-s -w" -o /out/inventory-exporter ./cmd/inventory-exporter/
-
-# Runtime stage
-FROM alpine:3.20
+# --- Linux exporter image ---
+FROM alpine:3.20 AS linux-exporter
 
 RUN apk add --no-cache ca-certificates
 
-COPY --from=build /out/inventory-exporter /usr/bin/inventory-exporter
+COPY bin/inventory-exporter /usr/bin/inventory-exporter
+
+EXPOSE 9101
+
+ENTRYPOINT ["/usr/bin/inventory-exporter"]
+CMD ["--config.file=/etc/inventory-exporter/config.yaml"]
+
+# --- ESXi exporter image ---
+FROM alpine:3.20 AS esxi-exporter
+
+RUN apk add --no-cache ca-certificates
+
+COPY bin/inventory-exporter /usr/bin/inventory-exporter
 
 EXPOSE 9101
 

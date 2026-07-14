@@ -1,6 +1,7 @@
 # Binaries
 /inventory-exporter
 /inventory-backend
+/bin/
 /out/
 
 # Test binary

@@ -1,0 +1,24 @@
+# Prometheus scrape configuration for inventory exporters (§13.1).
+# Add these to your prometheus.yml scrape_configs section.
+
+scrape_configs:
+  # Linux host exporters — one per Linux host.
+  - job_name: inventory-linux
+    scrape_interval: 1m
+    scrape_timeout: 30s
+    static_configs:
+      - targets:
+          - 'hv-kvm-01:9101'
+          - 'hv-kvm-02:9101'
+        labels:
+          platform: linux
+
+  # ESXi exporter — single collector for many ESXi hosts.
+  - job_name: inventory-esxi
+    scrape_interval: 1m
+    scrape_timeout: 30s
+    static_configs:
+      - targets:
+          - 'inventory-esxi:9101'
+        labels:
+          platform: esxi

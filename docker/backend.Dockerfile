@@ -1,27 +1,19 @@
-# Build stage
-FROM golang:1.22-alpine AS build
+# Run `make build-backend` first to produce bin/inventory-backend.
+# Then: docker build --network host -f docker/backend.Dockerfile -t inventory-backend .
 
-WORKDIR /src
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-
-RUN go build -ldflags="-s -w" -o /out/inventory-backend ./cmd/inventory-backend/
-
-# Runtime stage
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates
 
-COPY --from=build /out/inventory-backend /usr/bin/inventory-backend
-
-# Copy static frontend assets
+COPY bin/inventory-backend /usr/bin/inventory-backend
 COPY web/ /usr/share/inventory-backend/web/
+
+ENV WEB_DIR=/usr/share/inventory-backend/web/
+ENV LISTEN_ADDR=:8080
 
 EXPOSE 8080
 
-ENV PROMETHEUS_URL=http://prometheus:9090
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+  CMD wget -qO- http://localhost:8080/api/status || exit 1
 
 ENTRYPOINT ["/usr/bin/inventory-backend"]

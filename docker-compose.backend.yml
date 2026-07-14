@@ -1,0 +1,48 @@
+# Processing backend — standalone service (§7.3).
+# Queries Prometheus, normalizes inventory, serves the JSON API and web UI,
+# and publishes Confluence pages.
+#
+# Usage:
+#   PROMETHEUS_URL=http://prometheus:9090 \
+#   CONFLUENCE_URL=https://confluence.internal \
+#   CONFLUENCE_USERNAME=inventory-bot \
+#   CONFLUENCE_PASSWORD=<token> \
+#   CONFLUENCE_SPACE_KEY=INFRA \
+#   docker-compose -f docker-compose.backend.yml up -d
+#
+# Verify:
+#   curl http://localhost:8080/api/inventory
+#   curl http://localhost:8080/api/status
+
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      network: host
+    container_name: inventory-backend
+    network_mode: host
+    ports:
+      - "8080:8080"
+    environment:
+      - PROMETHEUS_URL=${PROMETHEUS_URL:?PROMETHEUS_URL is required}
+      - CONFLUENCE_URL=${CONFLUENCE_URL:-}
+      - CONFLUENCE_USERNAME=${CONFLUENCE_USERNAME:-}
+      - CONFLUENCE_PASSWORD=${CONFLUENCE_PASSWORD:-}
+      - CONFLUENCE_SPACE_KEY=${CONFLUENCE_SPACE_KEY:-}
+      - STATE_PATH=/data/state.json
+      - LISTEN_ADDR=:8080
+      - WEB_DIR=/usr/share/inventory-backend/web
+    volumes:
+      - inventory-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  inventory-data:
