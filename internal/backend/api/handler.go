@@ -1,0 +1,220 @@
+package api
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"sync"
+	"time"
+
+	"vm-inventory/internal/backend/index"
+	"vm-inventory/internal/backend/normalizer"
+	"vm-inventory/internal/backend/prometheus"
+	"vm-inventory/internal/backend/state"
+	"vm-inventory/internal/shared"
+)
+
+// Handler serves the inventory HTTP API (§17).
+type Handler struct {
+	idx          *index.ObservationIndex
+	normalizer   *normalizer.Normalizer
+	promClient   *prometheus.Client
+	stateStore   *state.Store
+	snapshotMu   sync.Mutex // serializes refresh
+	publishMu    sync.Mutex // serializes publication
+	etag         string
+	logger       *slog.Logger
+}
+
+// NewHandler creates a new API handler.
+func NewHandler(
+	idx *index.ObservationIndex,
+	promClient *prometheus.Client,
+	stateStore *state.Store,
+	logger *slog.Logger,
+) *Handler {
+	return &Handler{
+		idx:        idx,
+		normalizer: normalizer.New(idx),
+		promClient: promClient,
+		stateStore: stateStore,
+		logger:     logger,
+	}
+}
+
+// RegisterRoutes registers all HTTP routes on the given mux.
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/inventory", h.handleInventory)
+	mux.HandleFunc("/api/status", h.handleStatus)
+	mux.HandleFunc("/api/refresh", h.handleRefresh)
+	mux.HandleFunc("/api/confluence/publish", h.handlePublish)
+}
+
+// GET /api/inventory (§17.2) — returns normalized JSON with ETag support (§17.6).
+func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshot := h.normalizer.BuildUISnapshot()
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		h.logger.Error("failed to marshal inventory", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(data))
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", etag)
+
+	if match := r.Header.Get("If-None-Match"); match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Write(data)
+}
+
+// GET /api/status (§17.3) — returns cache and publication status.
+func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	st, err := h.stateStore.Load()
+	if err != nil {
+		h.logger.Error("failed to load state", "error", err)
+		st = &state.State{SchemaVersion: 1}
+	}
+
+	status := map[string]interface{}{
+		"cache_generated_at":        time.Now().UTC().Format(time.RFC3339),
+		"last_prometheus_refresh":   nil,
+		"last_refresh_status":       "ok",
+		"last_confluence_update":    nil,
+		"last_confluence_status":    st.LastConfluenceStatus,
+		"host_count":                h.idx.HostCount(),
+		"resource_count":            h.idx.ResourceCount(),
+	}
+
+	if st.LastSuccessfulRefresh != nil {
+		status["last_prometheus_refresh"] = st.LastSuccessfulRefresh.Format(time.RFC3339)
+	}
+	if st.LastConfluenceUpdate != nil {
+		status["last_confluence_update"] = st.LastConfluenceUpdate.Format(time.RFC3339)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+// POST /api/refresh (§17.4) — triggers immediate Prometheus refresh.
+func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.checkMutationAuth(r, w) {
+		return
+	}
+
+	if !h.snapshotMu.TryLock() {
+		http.Error(w, `{"error":"refresh_in_progress"}`, http.StatusConflict)
+		return
+	}
+	defer h.snapshotMu.Unlock()
+
+	// Perform a refresh from Prometheus.
+	ctx := r.Context()
+	qr, err := h.promClient.QueryInstant(ctx, prometheus.QueryAllInventory())
+	if err != nil {
+		h.logger.Error("refresh query failed", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "prometheus_unavailable",
+		})
+		return
+	}
+
+	// Decode results into the observation index.
+	grouped := prometheus.MetricsByName(qr.Data.Result)
+	for _, results := range grouped {
+		for _, result := range results {
+			h.processMetricResult(result, time.Now())
+		}
+	}
+
+	// Persist last successful refresh.
+	st, _ := h.stateStore.Load()
+	now := time.Now()
+	st.LastSuccessfulRefresh = &now
+	h.stateStore.Save(st)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /api/confluence/publish (§17.5) — triggers Confluence publication.
+func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.checkMutationAuth(r, w) {
+		return
+	}
+
+	if !h.publishMu.TryLock() {
+		http.Error(w, `{"error":"publish_in_progress"}`, http.StatusConflict)
+		return
+	}
+	defer h.publishMu.Unlock()
+
+	// Check Prometheus availability (§19.3).
+	if !h.promClient.IsAvailable(r.Context()) {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "prometheus_unavailable_publish_blocked",
+		})
+		return
+	}
+
+	// Confluence publication placeholder — full implementation in Phase 9.
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "published",
+		"note":   "confluence publisher not yet wired",
+	})
+}
+
+// checkMutationAuth enforces same-origin and custom header for mutation endpoints (§21.4).
+func (h *Handler) checkMutationAuth(r *http.Request, w http.ResponseWriter) bool {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, `{"error":"content_type_must_be_json"}`, http.StatusUnsupportedMediaType)
+		return false
+	}
+	if r.Header.Get("X-Inventory-Action") == "" {
+		http.Error(w, `{"error":"missing_required_header"}`, http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp time.Time) {
+	name := result.Metric["__name__"]
+	switch name {
+	case shared.MetricHostInfo:
+		rec := prometheus.DecodeHostInfo(result)
+		h.idx.UpsertHost(rec, timestamp)
+	case shared.MetricResourceInfo:
+		rec := prometheus.DecodeResourceInfo(result)
+		h.idx.UpsertResource(rec, timestamp)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}

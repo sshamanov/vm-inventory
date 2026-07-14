@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VM Inventory</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="sticky-header" id="header">
+  <h1>VM Inventory</h1>
+  <div class="header-controls">
+    <label for="search" class="sr-only">Search inventory</label>
+    <input type="search" id="search" placeholder="Search hosts, VMs, IPs..." aria-label="Search inventory">
+    <nav class="header-nav">
+      <span id="geo-nav"></span>
+      <span id="host-nav"></span>
+    </nav>
+    <div class="header-status" id="cache-status" aria-live="polite">Loading...</div>
+    <button id="refresh-btn" onclick="doRefresh()">Refresh</button>
+    <button id="publish-btn" onclick="doPublish()">Publish to Confluence</button>
+  </div>
+</header>
+
+<main id="content">
+  <div class="loading" id="loading">Loading inventory...</div>
+  <div class="empty" id="empty" hidden>No hosts currently observed. Inventory may appear after exporter collection and Prometheus scrape.</div>
+  <div class="no-results" id="no-results" hidden>No results match your search.</div>
+  <div id="geos"></div>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

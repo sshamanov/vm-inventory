@@ -1,0 +1,96 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #666;
+  --border: #ddd;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --used: #dc2626;
+  --hugepage-free: #f59e0b;
+  --normal-free: #16a34a;
+  --bar-bg: #f3f4f6;
+  --retained: #9ca3af;
+  --warning: #f59e0b;
+  --header-bg: #f8fafc;
+  --font: system-ui, -apple-system, sans-serif;
+  --mono: 'SF Mono', 'Fira Code', monospace;
+}
+
+html { font-size: 16px; scroll-behavior: smooth; }
+body { margin: 0; font-family: var(--font); color: var(--fg); background: var(--bg); line-height: 1.5; }
+
+/* Sticky header */
+.sticky-header {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--header-bg); border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1.5rem; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 0.75rem;
+}
+.sticky-header h1 { font-size: 1.25rem; margin: 0; white-space: nowrap; }
+.header-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex: 1; }
+.header-controls input[type="search"] {
+  padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;
+  min-width: 200px; font-size: 0.9rem;
+}
+.header-nav { display: flex; gap: 0.25rem; font-size: 0.8rem; }
+.header-nav a { color: var(--accent); text-decoration: none; padding: 0.15rem 0.4rem; border-radius: 4px; }
+.header-nav a:hover { background: #e0e7ff; }
+.header-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.header-status { font-size: 0.8rem; color: var(--muted); }
+.header-controls button {
+  padding: 0.4rem 1rem; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--accent); color: #fff; font-size: 0.85rem; cursor: pointer;
+}
+.header-controls button:hover { background: var(--accent-hover); }
+.header-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+.header-controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Main content */
+main { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+.loading, .empty, .no-results { text-align: center; padding: 3rem 1rem; color: var(--muted); font-style: italic; }
+
+/* Geo sections */
+.geo-section { margin-bottom: 2rem; }
+.geo-section h2 { font-size: 1.5rem; margin: 0 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }
+
+/* Host cards */
+.host-card {
+  border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem;
+  margin-bottom: 1rem; background: #fafafa;
+}
+.host-card.retained { border-color: var(--retained); background: #f9fafb; }
+.host-card h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.host-card .host-meta { font-size: 0.85rem; color: var(--muted); margin-bottom: 0.75rem; }
+.host-card .host-meta span { margin-right: 1rem; }
+.host-card .host-ips { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+.last-seen { font-size: 0.8rem; color: var(--retained); font-style: italic; }
+
+/* Bars */
+.bar-container { margin: 0.5rem 0 0.75rem; }
+.bar-label { font-size: 0.85rem; margin-bottom: 0.2rem; }
+.bar { display: flex; height: 1.5rem; border-radius: 6px; overflow: hidden; background: var(--bar-bg); font-size: 0.8rem; }
+.bar-segment { display: flex; align-items: center; justify-content: center; color: #fff; min-width: 2rem; }
+.bar-segment.used { background: var(--used); }
+.bar-segment.hugepage-free { background: var(--hugepage-free); }
+.bar-segment.normal-free { background: var(--normal-free); }
+.bar-segment.available { background: var(--normal-free); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+caption { font-weight: 600; text-align: left; margin-bottom: 0.5rem; font-size: 1rem; }
+thead th { background: #f1f5f9; text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid var(--border); font-weight: 600; }
+tbody td { padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: #f8fafc; }
+.missing { color: var(--muted); }
+
+/* Disks */
+.disk-group { font-family: var(--mono); font-size: 0.85rem; }
+
+/* Storage sections */
+.storage-section { margin: 0.5rem 0; }
+.storage-section h4 { font-size: 0.95rem; margin: 0.75rem 0 0.4rem; }
+
+/* Screen reader only */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }

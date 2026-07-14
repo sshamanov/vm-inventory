@@ -125,8 +125,8 @@ func SortIPs(ips []string) {
 	})
 }
 
-// ipFamily returns the family string ("4" or "6") for a valid IP.
-func ipFamily(ipStr string) string {
+// IPFamily returns the family string ("4" or "6") for a valid IP.
+func IPFamily(ipStr string) string {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		return ""
