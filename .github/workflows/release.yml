@@ -67,24 +67,20 @@ jobs:
             local file="$2"
             local desc="$3"
             local file_hash=$(sha256sum "$file" | cut -d' ' -f1)
-            local b64=$(base64 -w0 "$file")
 
-            curl -fsS -X POST \
+            curl -fsS -X POST "${FILESERVICE_URL}/${name}@sha256:${file_hash}" \
               -H "Authorization: Bearer ${FILESERVICE_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -nc \
-                --arg name      "$name" \
-                --arg version   "${{ github.ref_name }}" \
-                --arg file_hash "sha256:$file_hash" \
-                --arg commit    "${{ github.sha }}" \
-                --arg source    "${{ github.server_url }}/${{ github.repository }}" \
-                --arg desc      "$desc" \
-                --argjson run  ${{ github.run_number }} \
-                --arg b64       "$b64" \
-                '{name: $name, version: $version, run: $run, file_hash: $file_hash, commit: $commit, source: $source, description: $desc, binary: $b64}')" \
-              "${FILESERVICE_URL}" || echo "WARN: upload of $name failed"
+              -H "X-Package-Name: ${name}" \
+              -H "X-Package-Version: ${{ github.ref_name }}" \
+              -H "X-Package-Hash: sha256:${file_hash}" \
+              -H "X-Package-Commit: ${{ github.sha }}" \
+              -H "X-Package-Source: ${{ github.server_url }}/${{ github.repository }}" \
+              -H "X-Package-Description: ${desc}" \
+              -H "X-Package-Run: ${{ github.run_number }}" \
+              --data-binary "@${file}" \
+              || echo "WARN: upload of $name failed"
 
-            echo "Uploaded $name sha256:$file_hash commit:${{ github.sha }}"
+            echo "Uploaded $name sha256:$file_hash run:${{ github.run_number }}"
           }
 
           upload "inventory-exporter" bin/inventory-exporter \
