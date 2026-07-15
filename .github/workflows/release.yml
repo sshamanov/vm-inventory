@@ -70,7 +70,7 @@ jobs:
             local desc="$3"
             local file_hash=$(sha256sum "$file" | cut -d' ' -f1)
 
-            curl -fsS -X POST "${FILESERVICE_URL}/${name}" \
+            curl -fsS -X POST "${FILESERVICE_URL}" \
               -H "Authorization: Bearer ${FILESERVICE_TOKEN}" \
               -H "X-Package-Name: ${name}" \
               -H "X-Package-Version: ${{ github.ref_name }}" \
