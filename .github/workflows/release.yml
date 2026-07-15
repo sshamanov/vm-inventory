@@ -72,6 +72,7 @@ jobs:
 
             curl -fsS -X POST "${FILESERVICE_URL}" \
               -H "Authorization: Bearer ${FILESERVICE_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
               -H "X-Package-Name: ${name}" \
               -H "X-Package-Version: ${{ github.ref_name }}" \
               -H "X-Package-Hash: sha256:${file_hash}" \
