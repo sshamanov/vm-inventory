@@ -7,7 +7,6 @@ RUN apk add --no-cache ca-certificates
 
 COPY bin/inventory-exporter /usr/bin/inventory-exporter
 
-EXPOSE 9101
+EXPOSE 9171
 
 ENTRYPOINT ["/usr/bin/inventory-exporter"]
-CMD ["--config.file=/etc/inventory-exporter/config.yaml"]

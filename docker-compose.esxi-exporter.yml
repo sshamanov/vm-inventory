@@ -6,7 +6,7 @@
 #        cp config/exporter-esxi.yaml.example config/esxi.yaml
 #        chmod 600 config/esxi.yaml
 #   2. docker-compose -f docker-compose.esxi-exporter.yml up -d
-#   3. curl http://localhost:9101/metrics
+#   3. curl http://localhost:9171/metrics
 
 version: "3.8"
 
@@ -16,7 +16,5 @@ services:
     container_name: inventory-exporter
     network_mode: host
     ports:
-      - "9101:9101"
-    volumes:
-      - ./config/esxi.yaml:/etc/inventory-exporter/config.yaml:ro
+      - "9171:9171"
     restart: unless-stopped

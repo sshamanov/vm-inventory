@@ -50,16 +50,19 @@ func (mg *multiGatherer) Gather() ([]*dto.MetricFamily, error) {
 }
 
 func main() {
-	configFile := flag.String("config.file", "/etc/inventory-exporter/config.yaml", "Path to configuration file")
-	listenAddr := flag.String("web.listen-address", ":9101", "Address to listen on for HTTP requests")
+	configFile := flag.String("config.file", "", "Path to configuration file (optional)")
+	listenAddr := flag.String("web.listen-address", ":9171", "Address to listen on for HTTP requests")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	cfg, err := exporter.LoadConfig(*configFile)
-	if err != nil {
-		logger.Error("failed to load config", "error", err)
-		os.Exit(1)
+	cfg := defaultConfig()
+	if *configFile != "" {
+		if loaded, err := exporter.LoadConfig(*configFile); err != nil {
+			logger.Warn("failed to load config, using defaults", "error", err)
+		} else {
+			cfg = loaded
+		}
 	}
 
 	logger.Info("exporter starting", "mode", cfg.Mode)
@@ -148,6 +151,25 @@ func main() {
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
+	}
+}
+
+func defaultConfig() *exporter.Config {
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+	return &exporter.Config{
+		Mode: exporter.ModeLinux,
+		Host: &exporter.HostConfig{
+			ID:  hostname,
+			Geo: "general",
+		},
+		Collection: exporter.CollectionConfig{
+			Interval:       15 * time.Minute,
+			Timeout:        5 * time.Minute,
+			MaxSnapshotAge: 8 * time.Hour,
+		},
 	}
 }
 

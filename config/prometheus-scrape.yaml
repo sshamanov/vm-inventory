@@ -8,8 +8,8 @@ scrape_configs:
     scrape_timeout: 30s
     static_configs:
       - targets:
-          - 'hv-kvm-01:9101'
-          - 'hv-kvm-02:9101'
+          - 'hv-kvm-01:9171'
+          - 'hv-kvm-02:9171'
         labels:
           platform: linux
 
@@ -19,6 +19,6 @@ scrape_configs:
     scrape_timeout: 30s
     static_configs:
       - targets:
-          - 'inventory-esxi:9101'
+          - 'inventory-esxi:9171'
         labels:
           platform: esxi
