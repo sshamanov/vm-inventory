@@ -87,19 +87,13 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 }
 
 func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error) {
-	out, err := c.virshCtx(ctx, "pool-list", "--type", "logical", "--details")
+	out, err := c.virshCtx(ctx, "pool-list", "--type", "logical", "--name")
 	if err != nil {
 		return nil, fmt.Errorf("virsh pool-list: %w", err)
 	}
 
-	// pool-list --details columns: Name State Autostart Persistent Capacity Allocation Available
 	var pools []LibvirtPool
-	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 7 || fields[1] != "active" {
-			continue
-		}
-		name := fields[0]
+	for _, name := range strings.Fields(out) {
 		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
 
 		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
