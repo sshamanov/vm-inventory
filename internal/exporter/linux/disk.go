@@ -140,8 +140,8 @@ func listBlockDevices() ([]blockDevice, error) {
 	var devices []blockDevice
 	for _, entry := range entries {
 		name := entry.Name()
-		// Skip loop, ram, and other virtual devices.
-		if strings.HasPrefix(name, "loop") || strings.HasPrefix(name, "ram") || strings.HasPrefix(name, "dm-") {
+		// Only real physical disks: sd*, nvme*, vd*, hd*.
+		if !isPhysicalDisk(name) {
 			continue
 		}
 
@@ -210,6 +210,15 @@ func parseMounts() ([]mountEntry, error) {
 		})
 	}
 	return mounts, scanner.Err()
+}
+
+func isPhysicalDisk(name string) bool {
+	for _, prefix := range []string{"sd", "nvme", "vd", "hd", "xvd"} {
+		if strings.HasPrefix(name, prefix) && len(name) > len(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func copyLabels(src map[string]string) map[string]string {

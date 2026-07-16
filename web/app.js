@@ -221,8 +221,12 @@ function render(data) {
       if (host.storage_pools && host.storage_pools.length) {
         geoHTML += `<div class="storage-section"><h4>Storage Pools</h4>`;
         for (const pool of host.storage_pools) {
-          geoHTML += `<div>${esc(pool.pool_name)} (${esc(pool.pool_type)}): ${formatBytes(pool.total_bytes)} total`;
-          if (pool.available_bytes != null) geoHTML += `, ${formatBytes(pool.available_bytes)} free`;
+          const used = pool.total_bytes - (pool.available_bytes || 0);
+          const pct = pool.total_bytes > 0 ? Math.round((used / pool.total_bytes) * 100) : 0;
+          geoHTML += `<div class="bar-container">`;
+          geoHTML += `<div class="bar-label">${esc(pool.pool_name)} (${esc(pool.pool_type)}): ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
+          geoHTML += `<div class="bar"><div class="bar-segment used" style="width:${pct}%" aria-label="${pct}% used">${pct}%</div>`;
+          geoHTML += `<div class="bar-segment normal-free" style="width:${100-pct}%" aria-label="${100-pct}% free">${100-pct}%</div></div>`;
           geoHTML += `</div>`;
         }
         geoHTML += `</div>`;
