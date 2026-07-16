@@ -148,8 +148,12 @@ func (n *Normalizer) buildGeos(
 			// Merge filesystems — deduplicate by ID.
 			host.Filesystems = dedupFilesystems(obs.Filesystems, now, shared.UILivenessWindow)
 
-			// Merge storage pools.
+			// Merge storage pools (LVM for KVM, datastores for ESXi, dir/btrfs/zfs for LXD).
+			// Skip the libvirt "default" pool.
 			for _, p := range obs.StoragePools {
+				if p.PoolName == "default" {
+					continue
+				}
 				avail := int64(p.AvailBytes)
 				host.StoragePools = append(host.StoragePools, shared.StoragePool{
 					PoolID:         p.PoolID,
