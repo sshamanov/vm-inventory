@@ -88,7 +88,12 @@ func main() {
 		)
 		if cfg.Collectors != nil {
 			if cfg.Collectors.Libvirt.IsEnabled() {
-				logger.Info("libvirt collector enabled (not yet implemented)")
+				conn, err := linux.NewLibvirtConnection()
+				if err != nil {
+					logger.Warn("libvirt collector disabled", "error", err)
+				} else {
+					collectors = append(collectors, linux.NewLibvirtCollector(cfg.Host.ID, conn))
+				}
 			}
 			if cfg.Collectors.LXD.IsEnabled() {
 				logger.Info("LXD collector enabled (not yet implemented)")

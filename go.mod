@@ -2,6 +2,8 @@ module vm-inventory
 
 go 1.22
 
+toolchain go1.24.13
+
 require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/client_model v0.6.1
