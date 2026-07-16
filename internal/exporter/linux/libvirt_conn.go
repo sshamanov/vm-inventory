@@ -92,13 +92,14 @@ func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 		return nil, fmt.Errorf("virsh pool-list: %w", err)
 	}
 
+	// pool-list --details columns: Name State Autostart Persistent Capacity Allocation Available
 	var pools []LibvirtPool
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 5 || fields[4] != "active" {
+		if len(fields) < 7 || fields[1] != "running" {
 			continue
 		}
-		name := fields[2]
+		name := fields[0]
 		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
 
 		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
@@ -145,8 +146,24 @@ func parsePoolInfo(output, field string) int64 {
 		if strings.Contains(line, field+":") {
 			parts := strings.SplitN(line, ":", 2)
 			if len(parts) == 2 {
-				valStr := strings.TrimSpace(strings.TrimSuffix(parts[1], " KiB"))
-				v, _ := strconv.ParseFloat(strings.Fields(valStr)[0], 64)
+				valFields := strings.Fields(strings.TrimSpace(parts[1]))
+				if len(valFields) < 1 {
+					return 0
+				}
+				v, _ := strconv.ParseFloat(valFields[0], 64)
+				// Handle unit suffix (KiB, MiB, GiB, TiB).
+				if len(valFields) >= 2 {
+					switch valFields[1] {
+					case "TiB":
+						v *= 1024 * 1024 * 1024 * 1024
+					case "GiB":
+						v *= 1024 * 1024 * 1024
+					case "MiB":
+						v *= 1024 * 1024
+					case "KiB":
+						v *= 1024
+					}
+				}
 				return int64(v)
 			}
 		}
