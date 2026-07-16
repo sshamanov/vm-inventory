@@ -9,6 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+  FILESERVICE_URL: ${{ vars.FILESERVICE_URL }}
 
 jobs:
   test:
@@ -35,15 +36,15 @@ jobs:
 
       - name: Build exporter
         run: |
-          VERSION=${GITHUB_REF_NAME:-dev} COMMIT=$(git rev-parse --short HEAD)
+          COMMIT=$(git rev-parse --short HEAD)
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-            go build -ldflags="-s -w -X vm-inventory/internal/version.Version=$VERSION -X vm-inventory/internal/version.Commit=$COMMIT" \
+            go build -ldflags="-s -w -X vm-inventory/internal/version.Version=main -X vm-inventory/internal/version.Commit=$COMMIT" \
             -o bin/inventory-exporter ./cmd/inventory-exporter/
 
       - name: Build backend
         run: |
-          VERSION=${GITHUB_REF_NAME:-dev} COMMIT=$(git rev-parse --short HEAD)
-          go build -ldflags="-s -w -X vm-inventory/internal/version.Version=$VERSION -X vm-inventory/internal/version.Commit=$COMMIT" \
+          COMMIT=$(git rev-parse --short HEAD)
+          go build -ldflags="-s -w -X vm-inventory/internal/version.Version=main -X vm-inventory/internal/version.Commit=$COMMIT" \
             -o bin/inventory-backend ./cmd/inventory-backend/
 
       - name: Upload exporter binary
@@ -109,3 +110,35 @@ jobs:
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
             ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.sha }}
 
+      - name: Upload binaries to file service
+        if: ${{ github.event_name == 'push' && env.FILESERVICE_URL != '' }}
+        env:
+          FILESERVICE_TOKEN: ${{ secrets.FILESERVICE_TOKEN }}
+        run: |
+          upload() {
+            local name="$1"
+            local file="$2"
+            local desc="$3"
+            local file_hash=$(sha256sum "$file" | cut -d' ' -f1)
+
+            curl -fsS -X POST "${FILESERVICE_URL}" \
+              -H "Authorization: Bearer ${FILESERVICE_TOKEN}" \
+              -H "Content-Type: application/octet-stream" \
+              -H "X-Package-Name: ${name}" \
+              -H "X-Package-Version: ${{ github.sha }}" \
+              -H "X-Package-Hash: sha256:${file_hash}" \
+              -H "X-Package-Commit: ${{ github.sha }}" \
+              -H "X-Package-Source: ${{ github.server_url }}/${{ github.repository }}" \
+              -H "X-Package-Description: ${desc}" \
+              -H "X-Package-Run: ${{ github.run_number }}" \
+              --data-binary "@${file}" \
+              || echo "WARN: upload of $name failed"
+
+            echo "Uploaded $name sha256:$file_hash run:${{ github.run_number }}"
+          }
+
+          upload "inventory-exporter" bin/inventory-exporter \
+            "Infrastructure inventory exporter binary for Linux AMD64"
+
+          upload "inventory-backend" bin/inventory-backend \
+            "Processing backend — Prometheus queries, JSON API, web UI, Confluence publisher"
