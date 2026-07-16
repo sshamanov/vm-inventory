@@ -24,9 +24,13 @@ type HostObservation struct {
 
 // ResourceObservation tracks a resource's latest observation.
 type ResourceObservation struct {
-	StableID string
-	Record   prometheus.ResourceInfoRecord
-	LastSeen time.Time
+	StableID    string
+	Record      prometheus.ResourceInfoRecord
+	LastSeen    time.Time
+	CPUCount    float64
+	MemoryBytes float64
+	DiskBytes   float64
+	IPs         []prometheus.HostIPRecord
 }
 
 // NewObservationIndex creates an empty index.
@@ -132,6 +136,23 @@ func (idx *ObservationIndex) Prune(window time.Duration) {
 			delete(idx.resources, id)
 		}
 	}
+}
+
+// UpdateResourceField applies fn to the resource identified by inventoryID,
+// creating a placeholder if it doesn't exist yet.
+func (idx *ObservationIndex) UpdateResourceField(inventoryID string, fn func(*ResourceObservation), lastSeen time.Time) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	r, ok := idx.resources[inventoryID]
+	if !ok {
+		r = &ResourceObservation{StableID: inventoryID}
+		idx.resources[inventoryID] = r
+	}
+	if lastSeen.After(r.LastSeen) {
+		r.LastSeen = lastSeen
+	}
+	fn(r)
 }
 
 // HostCount returns the total number of hosts in the index.

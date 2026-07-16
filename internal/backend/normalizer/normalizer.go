@@ -105,6 +105,10 @@ func (n *Normalizer) buildGeos(
 			for _, res := range resources {
 				switch res.Record.Kind {
 				case shared.KindLibvirtVM, shared.KindEsxiVM:
+					var ips []string
+					for _, ip := range res.IPs {
+						ips = append(ips, ip.Address)
+					}
 					vm := shared.VMResource{
 						InventoryID:      res.StableID,
 						HostID:           res.Record.HostID,
@@ -113,6 +117,13 @@ func (n *Normalizer) buildGeos(
 						Description:      res.Record.Description,
 						GuestOS:          res.Record.GuestOS,
 						Architecture:     res.Record.Architecture,
+						CPUCount:         int64(res.CPUCount),
+						MemoryBytes:      int64(res.MemoryBytes),
+						DiskTotalBytes:   int64(res.DiskBytes),
+						IPs:              ips,
+						CapacitySourceCPU:    shared.CapacityConfigured,
+						CapacitySourceRAM:    shared.CapacityConfigured,
+						CapacitySourceDisk:   shared.CapacityConfigured,
 						ObservationState: index.ObservationState(res.LastSeen, now, window),
 					}
 					if res.Record.Kind == shared.KindLibvirtVM {
@@ -126,6 +137,10 @@ func (n *Normalizer) buildGeos(
 					geo.VirtualMachines = append(geo.VirtualMachines, vm)
 
 				case shared.KindLXDContainer:
+					var ips []string
+					for _, ip := range res.IPs {
+						ips = append(ips, ip.Address)
+					}
 					container := shared.LXDContainer{
 						InventoryID:      res.StableID,
 						HostID:           res.Record.HostID,
@@ -134,6 +149,13 @@ func (n *Normalizer) buildGeos(
 						Description:      res.Record.Description,
 						GuestOS:          res.Record.GuestOS,
 						Architecture:     res.Record.Architecture,
+						CPUCount:         int64(res.CPUCount),
+						MemoryBytes:      int64(res.MemoryBytes),
+						RootDiskBytes:    int64(res.DiskBytes),
+						IPs:              ips,
+						CapacitySourceCPU:    shared.CapacityConfigured,
+						CapacitySourceRAM:    shared.CapacityConfigured,
+						CapacitySourceDisk:   shared.CapacityConfigured,
 						ObservationState: index.ObservationState(res.LastSeen, now, window),
 					}
 					if !index.IsUsageFresh(res.LastSeen, now, shared.UILivenessWindow) {
