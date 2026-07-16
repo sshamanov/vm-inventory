@@ -35,6 +35,63 @@ type HostObservation struct {
 	HugepagesFree   map[string]float64 // page_size -> free_bytes
 }
 
+// MergeBlockDevice adds or updates a block device record, merging by DeviceID.
+func (h *HostObservation) MergeBlockDevice(r prometheus.BlockDeviceRecord) {
+	for i, d := range h.BlockDevices {
+		if d.DeviceID == r.DeviceID {
+			if r.SizeBytes > 0 {
+				h.BlockDevices[i].SizeBytes = r.SizeBytes
+			}
+			if r.Model != "" {
+				h.BlockDevices[i].Model = r.Model
+			}
+			if r.DeviceName != "" {
+				h.BlockDevices[i].DeviceName = r.DeviceName
+			}
+			return
+		}
+	}
+	h.BlockDevices = append(h.BlockDevices, r)
+}
+
+// MergeFilesystem adds or updates a filesystem record, merging by FilesystemID.
+func (h *HostObservation) MergeFilesystem(r prometheus.FilesystemRecord) {
+	for i, fs := range h.Filesystems {
+		if fs.FilesystemID == r.FilesystemID {
+			if r.TotalBytes > 0 {
+				h.Filesystems[i].TotalBytes = r.TotalBytes
+			}
+			if r.AvailBytes > 0 {
+				h.Filesystems[i].AvailBytes = r.AvailBytes
+			}
+			if r.FilesystemType != "" {
+				h.Filesystems[i].FilesystemType = r.FilesystemType
+			}
+			if r.Mountpoint != "" {
+				h.Filesystems[i].Mountpoint = r.Mountpoint
+			}
+			return
+		}
+	}
+	h.Filesystems = append(h.Filesystems, r)
+}
+
+// MergeStoragePool adds or updates a storage pool record.
+func (h *HostObservation) MergeStoragePool(r prometheus.StoragePoolRecord) {
+	for i, p := range h.StoragePools {
+		if p.PoolID == r.PoolID {
+			if r.TotalBytes > 0 {
+				h.StoragePools[i].TotalBytes = r.TotalBytes
+			}
+			if r.AvailBytes > 0 {
+				h.StoragePools[i].AvailBytes = r.AvailBytes
+			}
+			return
+		}
+	}
+	h.StoragePools = append(h.StoragePools, r)
+}
+
 // InitMaps ensures lazy-allocated maps are initialized.
 func (h *HostObservation) InitMaps() {
 	if h.HugepagesTotal == nil {
@@ -70,14 +127,18 @@ func (idx *ObservationIndex) UpsertHost(record prometheus.HostInfoRecord, lastSe
 	defer idx.mu.Unlock()
 
 	existing, ok := idx.hosts[record.HostID]
-	if ok && !lastSeen.After(existing.LastSeen) {
-		return // only update if newer
+	if !ok {
+		idx.hosts[record.HostID] = &HostObservation{
+			Record:    record,
+			LastSeen:  lastSeen,
+			RefreshID: lastSeen.Format(time.RFC3339Nano),
+		}
+		return
 	}
-
-	idx.hosts[record.HostID] = &HostObservation{
-		Record:    record,
-		LastSeen:  lastSeen,
-		RefreshID: lastSeen.Format(time.RFC3339Nano),
+	// Preserve detail fields already set by UpdateHostField.
+	existing.Record = record
+	if lastSeen.After(existing.LastSeen) {
+		existing.LastSeen = lastSeen
 	}
 }
 
@@ -88,14 +149,18 @@ func (idx *ObservationIndex) UpsertResource(record prometheus.ResourceInfoRecord
 
 	// inventory_id from the metric is already a stable ID (host:kind:source).
 	existing, ok := idx.resources[record.InventoryID]
-	if ok && !lastSeen.After(existing.LastSeen) {
+	if !ok {
+		idx.resources[record.InventoryID] = &ResourceObservation{
+			StableID: record.InventoryID,
+			Record:   record,
+			LastSeen: lastSeen,
+		}
 		return
 	}
-
-	idx.resources[record.InventoryID] = &ResourceObservation{
-		StableID: record.InventoryID,
-		Record:   record,
-		LastSeen: lastSeen,
+	// Update record fields but preserve detail fields from UpdateResourceField.
+	existing.Record = record
+	if lastSeen.After(existing.LastSeen) {
+		existing.LastSeen = lastSeen
 	}
 }
 
