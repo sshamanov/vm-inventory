@@ -13,6 +13,7 @@ import (
 	"vm-inventory/internal/backend/normalizer"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
+	"vm-inventory/internal/version"
 )
 
 // Handler serves the inventory HTTP API (§17).
@@ -111,6 +112,8 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := map[string]interface{}{
+		"version":                   version.Version,
+		"commit":                    version.Commit,
 		"cache_generated_at":        time.Now().UTC().Format(time.RFC3339),
 		"last_prometheus_refresh":   nil,
 		"last_refresh_status":       "ok",
