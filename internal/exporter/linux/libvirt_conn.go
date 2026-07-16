@@ -96,7 +96,7 @@ func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 	var pools []LibvirtPool
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 7 || fields[1] != "running" {
+		if len(fields) < 7 || fields[1] != "active" {
 			continue
 		}
 		name := fields[0]
