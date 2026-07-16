@@ -33,6 +33,7 @@ else
   echo "bin-update: ${NAME} not found at ${BIN}, downloading"
 fi
 
+mkdir -p "$(dirname "${BIN}")"
 curl -fsSLo "${BIN}" "${URL}/f/${NAME}/raw"
 chmod +x "${BIN}"
 echo "bin-update: ${NAME} updated to ${REMOTE}"
