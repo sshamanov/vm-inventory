@@ -92,5 +92,9 @@ tbody tr:hover { background: #f8fafc; }
 .storage-section { margin: 0.5rem 0; }
 .storage-section h4 { font-size: 0.95rem; margin: 0.75rem 0 0.4rem; }
 
+/* Sort buttons */
+.sort-btn { background: none; border: none; cursor: pointer; font: inherit; font-weight: 600; color: inherit; padding: 0; }
+.sort-btn:hover { color: var(--accent); }
+
 /* Screen reader only */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }

@@ -13,7 +13,6 @@ import (
 	"vm-inventory/internal/backend/normalizer"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
-	"vm-inventory/internal/shared"
 )
 
 // Handler serves the inventory HTTP API (§17).
@@ -226,13 +225,67 @@ func (h *Handler) checkMutationAuth(r *http.Request, w http.ResponseWriter) bool
 
 func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp time.Time) {
 	name := result.Metric["__name__"]
+	hostID := result.Metric["host_id"]
+	inventoryID := result.Metric["inventory_id"]
+
 	switch name {
-	case shared.MetricHostInfo:
+	case "inventory_host_info":
 		rec := prometheus.DecodeHostInfo(result)
 		h.idx.UpsertHost(rec, timestamp)
-	case shared.MetricResourceInfo:
+	case "inventory_host_ip_info":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.IPs = append(ho.IPs, prometheus.DecodeHostIP(result))
+		}, timestamp)
+	case "inventory_host_cpu_info":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.CPUModel = result.Metric["model"]
+		}, timestamp)
+	case "inventory_host_cpu_sockets":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.CPUSockets = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_host_cpu_cores":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.CPUCores = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_host_cpu_threads":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.CPUThreads = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_host_cpu_usage_ratio":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.CPUUsage = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_host_memory_total_bytes":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.MemoryTotal = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_host_memory_available_bytes":
+		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
+			ho.MemoryAvail = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_resource_info":
 		rec := prometheus.DecodeResourceInfo(result)
 		h.idx.UpsertResource(rec, timestamp)
+	case "inventory_resource_cpu_count":
+		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
+			r.CPUCount = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_resource_memory_bytes":
+		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
+			r.MemoryBytes = prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_resource_disk_bytes":
+		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
+			r.DiskBytes += prometheus.ParseValue(result)
+		}, timestamp)
+	case "inventory_resource_ip_info":
+		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
+			r.IPs = append(r.IPs, prometheus.HostIPRecord{
+				Address: result.Metric["address"],
+				Family:  result.Metric["family"],
+			})
+		}, timestamp)
 	}
 }
 

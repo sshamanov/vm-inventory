@@ -2,6 +2,7 @@
 
 let currentData = null;
 let searchTerm = "";
+let vmSort = { col: "name", asc: true };
 
 // --- Init ---
 
@@ -123,6 +124,13 @@ function render(data) {
     // Apply search filter.
     if (searchTerm && !geoMatches(geo, searchTerm)) continue;
 
+    // Sort hosts by ID.
+    geo.hosts.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
+
+    // Sort VMs and LXD.
+    if (geo.virtual_machines) geo.virtual_machines.sort(vmCompare);
+    if (geo.lxd_containers) geo.lxd_containers.sort(vmCompare);
+
     const anchor = slugify(geo.name);
     geoNavHTML += `<a href="#${anchor}">${esc(geo.name)}</a>`;
 
@@ -225,7 +233,10 @@ function render(data) {
     // VM table.
     if (geo.virtual_machines && geo.virtual_machines.length) {
       geoHTML += `<table><caption>Virtual Machines</caption><thead><tr>`;
-      geoHTML += `<th>Host</th><th>Name</th><th>Platform</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
+      geoHTML += `<th><button class="sort-btn" onclick="setSort('host_id')">Host ${sortArrow('host_id')}</button></th>`;
+      geoHTML += `<th><button class="sort-btn" onclick="setSort('name')">Name ${sortArrow('name')}</button></th>`;
+      geoHTML += `<th><button class="sort-btn" onclick="setSort('platform')">Platform ${sortArrow('platform')}</button></th>`;
+      geoHTML += `<th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
       geoHTML += `</tr></thead><tbody>`;
       for (const vm of geo.virtual_machines) {
         if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
@@ -350,6 +361,24 @@ function formatBytes(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   const val = bytes / Math.pow(1024, i);
   return `${val.toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function setSort(col) {
+  if (vmSort.col === col) { vmSort.asc = !vmSort.asc; }
+  else { vmSort.col = col; vmSort.asc = true; }
+  if (currentData) render(currentData);
+}
+
+function sortArrow(col) {
+  if (vmSort.col !== col) return "";
+  return vmSort.asc ? "▲" : "▼";
+}
+
+function vmCompare(a, b) {
+  const va = (a[vmSort.col] || "").toString().toLowerCase();
+  const vb = (b[vmSort.col] || "").toString().toLowerCase();
+  const cmp = va.localeCompare(vb);
+  return vmSort.asc ? cmp : -cmp;
 }
 
 function debounce(fn, delay) {

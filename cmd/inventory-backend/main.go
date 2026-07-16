@@ -165,37 +165,66 @@ func main() {
 func processMetricResult(obsIndex *index.ObservationIndex, result prometheus.MetricResult) {
 	name := result.Metric["__name__"]
 	now := time.Now()
+	hostID := result.Metric["host_id"]
+	inventoryID := result.Metric["inventory_id"]
+
 	switch name {
 	case "inventory_host_info":
 		rec := prometheus.DecodeHostInfo(result)
 		obsIndex.UpsertHost(rec, now)
+	case "inventory_host_ip_info":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.IPs = append(h.IPs, prometheus.DecodeHostIP(result))
+		}, now)
+	case "inventory_host_cpu_info":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.CPUModel = result.Metric["model"]
+		}, now)
+	case "inventory_host_cpu_sockets":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.CPUSockets = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_cpu_cores":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.CPUCores = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_cpu_threads":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.CPUThreads = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_cpu_usage_ratio":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.CPUUsage = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_memory_total_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.MemoryTotal = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_memory_available_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.MemoryAvail = prometheus.ParseValue(result)
+		}, now)
 	case "inventory_resource_info":
 		rec := prometheus.DecodeResourceInfo(result)
 		obsIndex.UpsertResource(rec, now)
 	case "inventory_resource_cpu_count":
-		inventoryID := result.Metric["inventory_id"]
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.CPUCount = prometheus.ParseValue(result)
 		}, now)
 	case "inventory_resource_memory_bytes":
-		inventoryID := result.Metric["inventory_id"]
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.MemoryBytes = prometheus.ParseValue(result)
 		}, now)
 	case "inventory_resource_disk_bytes":
-		inventoryID := result.Metric["inventory_id"]
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.DiskBytes += prometheus.ParseValue(result) // sum all disks
+			r.DiskBytes += prometheus.ParseValue(result)
 		}, now)
 	case "inventory_resource_ip_info":
-		inventoryID := result.Metric["inventory_id"]
-		ip := prometheus.HostIPRecord{
-			HostID:  "", // uses inventory_id not host_id
-			Address: result.Metric["address"],
-			Family:  result.Metric["family"],
-		}
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.IPs = append(r.IPs, ip)
+			r.IPs = append(r.IPs, prometheus.HostIPRecord{
+				Address: result.Metric["address"],
+				Family:  result.Metric["family"],
+			})
 		}, now)
 	}
 }

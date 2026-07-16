@@ -15,11 +15,19 @@ type ObservationIndex struct {
 	resources map[string]*ResourceObservation
 }
 
-// HostObservation tracks a host's latest observation.
+// HostObservation tracks a host's latest observation with joined metric data.
 type HostObservation struct {
-	Record    prometheus.HostInfoRecord
-	LastSeen  time.Time // collector snapshot timestamp
-	RefreshID string
+	Record      prometheus.HostInfoRecord
+	LastSeen    time.Time
+	RefreshID   string
+	IPs         []prometheus.HostIPRecord
+	CPUSockets  float64
+	CPUCores    float64
+	CPUThreads  float64
+	CPUModel    string
+	CPUUsage    float64
+	MemoryTotal float64
+	MemoryAvail float64
 }
 
 // ResourceObservation tracks a resource's latest observation.
@@ -136,6 +144,21 @@ func (idx *ObservationIndex) Prune(window time.Duration) {
 			delete(idx.resources, id)
 		}
 	}
+}
+
+// UpdateHostField applies fn to a host, creating a placeholder if needed.
+func (idx *ObservationIndex) UpdateHostField(hostID string, fn func(*HostObservation), lastSeen time.Time) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	h, ok := idx.hosts[hostID]
+	if !ok {
+		h = &HostObservation{Record: prometheus.HostInfoRecord{HostID: hostID}}
+		idx.hosts[hostID] = h
+	}
+	if lastSeen.After(h.LastSeen) {
+		h.LastSeen = lastSeen
+	}
+	fn(h)
 }
 
 // UpdateResourceField applies fn to the resource identified by inventoryID,

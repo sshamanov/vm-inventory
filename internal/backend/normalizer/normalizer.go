@@ -71,6 +71,12 @@ func (n *Normalizer) buildGeos(
 		geo := shared.Geo{Name: geoName}
 
 		for _, obs := range hostObs {
+			// Collect host IPs.
+			var hostIPs []string
+			for _, ip := range obs.IPs {
+				hostIPs = append(hostIPs, ip.Address)
+			}
+
 			host := shared.Host{
 				ID:               obs.Record.HostID,
 				Description:      obs.Record.Description,
@@ -81,15 +87,35 @@ func (n *Normalizer) buildGeos(
 				OSVersion:        obs.Record.OSVersion,
 				Kernel:           obs.Record.Kernel,
 				Architecture:     obs.Record.Architecture,
+				IPs:              shared.FilterIPs(hostIPs),
+				CPU: shared.CPUInfo{
+					Model:   obs.CPUModel,
+					Sockets: int(obs.CPUSockets),
+					Cores:   int(obs.CPUCores),
+					Threads: int(obs.CPUThreads),
+				},
+				Memory: shared.MemoryInfo{
+					TotalBytes:     int64(obs.MemoryTotal),
+					AvailableBytes: int64Ptr(int64(obs.MemoryAvail)),
+				},
 				ObservationState: index.ObservationState(obs.LastSeen, now, window),
+			}
+
+			if obs.CPUUsage > 0 && index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
+				usage := obs.CPUUsage
+				threads := float64(obs.CPUThreads)
+				if threads > 0 {
+					used := threads * usage
+					free := threads - used
+					host.CPU.UsageRatio = &usage
+					host.CPU.UsedThreadEquiv = &used
+					host.CPU.FreeThreadEquiv = &free
+				}
 			}
 
 			if !index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
 				host.LastSeen = &obs.LastSeen
 			}
-
-			// Host IPs are collected separately by the decoder.
-			// Here we merge them from resource data.
 
 			geo.Hosts = append(geo.Hosts, host)
 		}
@@ -191,6 +217,8 @@ func toLower(s string) string {
 	}
 	return string(b)
 }
+
+func int64Ptr(v int64) *int64 { return &v }
 
 // MergeIPs attaches IP records to hosts.
 func MergeIPs(host *shared.Host, ips []prometheus.HostIPRecord) {
