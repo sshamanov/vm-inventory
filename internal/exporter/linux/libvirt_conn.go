@@ -127,11 +127,13 @@ func (c *virshConn) virshIgnoreError(ctx context.Context, args ...string) string
 
 func parseVirshStat(output, key string) int {
 	for _, line := range strings.Split(output, "\n") {
-		if strings.Contains(line, key+"=") {
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 {
-				v, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-				return v
+		if strings.Contains(line, key) {
+			// Supports both "key=value" (domstats) and "key: value" (domblkinfo).
+			for _, sep := range []string{"=", ":"} {
+				if parts := strings.SplitN(line, sep, 2); len(parts) == 2 {
+					v, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+					return v
+				}
 			}
 		}
 	}
