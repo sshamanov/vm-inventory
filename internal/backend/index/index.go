@@ -71,14 +71,14 @@ func (idx *ObservationIndex) UpsertResource(record prometheus.ResourceInfoRecord
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
-	stableID := shared.StableID(record.HostID, record.Kind, record.InventoryID)
-	existing, ok := idx.resources[stableID]
+	// inventory_id from the metric is already a stable ID (host:kind:source).
+	existing, ok := idx.resources[record.InventoryID]
 	if ok && !lastSeen.After(existing.LastSeen) {
 		return
 	}
 
-	idx.resources[stableID] = &ResourceObservation{
-		StableID: stableID,
+	idx.resources[record.InventoryID] = &ResourceObservation{
+		StableID: record.InventoryID,
 		Record:   record,
 		LastSeen: lastSeen,
 	}
