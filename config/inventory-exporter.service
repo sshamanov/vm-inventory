@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 # Self-update before start — exits 0 if already current.
+ExecStartPre=-/bin/mkdir -p /var/lib/inventory-exporter
 ExecStartPre=/usr/local/bin/bin-update.sh inventory-exporter /var/lib/inventory-exporter/inventory-exporter
 ExecStart=/var/lib/inventory-exporter/inventory-exporter
 Restart=always
