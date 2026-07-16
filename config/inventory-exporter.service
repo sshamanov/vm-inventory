@@ -4,18 +4,15 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-# Self-update before start — exits 0 if already current.
 ExecStartPre=/usr/local/bin/bin-update.sh inventory-exporter /var/lib/inventory-exporter/inventory-exporter
 ExecStart=/var/lib/inventory-exporter/inventory-exporter
 Restart=always
 RestartSec=30
 
-# Security hardening.
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/tmp
 StateDirectory=inventory-exporter
 
 [Install]
