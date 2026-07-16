@@ -22,7 +22,7 @@ func New(idx *index.ObservationIndex) *Normalizer {
 
 // BuildUISnapshot builds the 1-hour UI snapshot (§15.1, §17.2).
 func (n *Normalizer) BuildUISnapshot() *shared.NormalizedInventory {
-	now := time.Now()
+	now := time.Now().Truncate(time.Second) // stable within same second
 
 	hostsByGeo := n.idx.GetHostsByGeo(now, shared.UILivenessWindow)
 	resByHost := n.idx.GetResourcesByHost(now, shared.UILivenessWindow)

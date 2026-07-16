@@ -110,11 +110,15 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to load state", "error", err)
 		st = &state.State{SchemaVersion: 1}
 	}
+		cacheTime := time.Now().UTC()
+		if st.LastSuccessfulRefresh != nil {
+			cacheTime = *st.LastSuccessfulRefresh
+		}
 
 	status := map[string]interface{}{
 		"version":                   version.Version,
 		"commit":                    version.Commit,
-		"cache_generated_at":        time.Now().UTC().Format(time.RFC3339),
+		"cache_generated_at":        cacheTime.Format(time.RFC3339),
 		"last_prometheus_refresh":   nil,
 		"last_refresh_status":       "ok",
 		"last_confluence_update":    nil,
