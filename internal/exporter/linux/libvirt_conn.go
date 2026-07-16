@@ -104,8 +104,8 @@ func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 
 		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
 		if info := c.virshIgnoreError(ctx, "pool-info", name); info != "" {
-			p.TotalBytes = parsePoolInfo(info, "Capacity") * 1024
-			p.AvailBytes = parsePoolInfo(info, "Available") * 1024
+			p.TotalBytes = parsePoolInfo(info, "Capacity")
+			p.AvailBytes = parsePoolInfo(info, "Available")
 		}
 		pools = append(pools, p)
 	}
