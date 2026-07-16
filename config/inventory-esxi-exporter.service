@@ -13,6 +13,9 @@ ExecStart=/usr/bin/docker run \
   --network host \
   --restart no \
   --read-only \
+  --memory 256m \
+  --cpus 0.5 \
+  --pids-limit 20 \
   -v /etc/inventory-exporter/esxi.yaml:/etc/inventory-exporter/config.yaml:ro \
   ghcr.io/sshamanov/inventory-exporter:latest
 
