@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"vm-inventory/internal/exporter"
 	"vm-inventory/internal/exporter/linux"
+	"vm-inventory/internal/version"
 )
 
 // multiGatherer combines multiple prometheus.Gatherer sources.
@@ -52,7 +54,15 @@ func (mg *multiGatherer) Gather() ([]*dto.MetricFamily, error) {
 func main() {
 	configFile := flag.String("config.file", "", "Path to configuration file (optional)")
 	listenAddr := flag.String("web.listen-address", ":9171", "Address to listen on for HTTP requests")
+	versionFlag := flag.Bool("version", false, "Show version and exit")
+	flag.BoolVar(versionFlag, "v", false, "Show version and exit")
+
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("inventory-exporter %s (commit %s)\n", version.Version, version.Commit)
+		os.Exit(0)
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 

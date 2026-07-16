@@ -26,11 +26,13 @@ jobs:
       - name: Build exporter
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-            go build -ldflags="-s -w" -o bin/inventory-exporter ./cmd/inventory-exporter/
+            go build -ldflags="-s -w -X vm-inventory/internal/version.Version=${{ github.ref_name }} -X vm-inventory/internal/version.Commit=$(git rev-parse --short HEAD)" \
+            -o bin/inventory-exporter ./cmd/inventory-exporter/
 
       - name: Build backend
         run: |
-          go build -ldflags="-s -w" -o bin/inventory-backend ./cmd/inventory-backend/
+          go build -ldflags="-s -w -X vm-inventory/internal/version.Version=${{ github.ref_name }} -X vm-inventory/internal/version.Commit=$(git rev-parse --short HEAD)" \
+            -o bin/inventory-backend ./cmd/inventory-backend/
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

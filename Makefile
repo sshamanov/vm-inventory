@@ -8,19 +8,23 @@ all: build
 
 build: build-exporter build-backend
 
+VERSION ?= dev
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+LDFLAGS = -s -w -X vm-inventory/internal/version.Version=$(VERSION) -X vm-inventory/internal/version.Commit=$(COMMIT)
+
 build-exporter:
 	mkdir -p bin
 	docker run --rm --network host --tmpfs /root/.cache/go-build:exec \
 		-v "$(shell pwd)":/src -w /src \
 		golang:1.22-alpine sh -c \
-		'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /src/bin/inventory-exporter ./cmd/inventory-exporter/'
+		'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o /src/bin/inventory-exporter ./cmd/inventory-exporter/'
 
 build-backend:
 	mkdir -p bin
 	docker run --rm --network host --tmpfs /root/.cache/go-build:exec \
 		-v "$(shell pwd)":/src -w /src \
 		golang:1.22-alpine sh -c \
-		'go build -ldflags="-s -w" -o /src/bin/inventory-backend ./cmd/inventory-backend/'
+		'go build -ldflags="$(LDFLAGS)" -o /src/bin/inventory-backend ./cmd/inventory-backend/'
 
 # --- Docker images (require binaries built first) ---
 
