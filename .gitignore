@@ -27,3 +27,4 @@ docker-compose.override.yml
 
 # State data
 /data/
+test-results/
