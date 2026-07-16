@@ -86,18 +86,19 @@ func main() {
 		collectors = append(collectors,
 			linux.NewHostCollector(cfg.Host.ID, cfg.Host.Description, cfg.Host.Geo),
 		)
-		if cfg.Collectors != nil {
-			if cfg.Collectors.Libvirt.IsEnabled() {
-				conn, err := linux.NewLibvirtConnection()
-				if err != nil {
-					logger.Warn("libvirt collector disabled", "error", err)
-				} else {
-					collectors = append(collectors, linux.NewLibvirtCollector(cfg.Host.ID, conn))
-				}
+		// Libvirt and LXD are enabled by default when unconfigured (§7.1).
+		if cfg.Collectors == nil || cfg.Collectors.Libvirt.IsEnabled() {
+			conn, err := linux.NewLibvirtConnection()
+			if err != nil {
+				logger.Warn("libvirt collector disabled", "error", err)
+			} else {
+				collectors = append(collectors, linux.NewLibvirtCollector(cfg.Host.ID, conn))
 			}
-			if cfg.Collectors.LXD.IsEnabled() {
-				logger.Info("LXD collector enabled (not yet implemented)")
-			}
+		}
+		if cfg.Collectors != nil && cfg.Collectors.LXD != nil && !cfg.Collectors.LXD.IsEnabled() {
+			// LXD opt-out only when explicitly disabled.
+		} else {
+			logger.Info("LXD collector enabled (not yet implemented)")
 		}
 
 	case exporter.ModeESXi:
