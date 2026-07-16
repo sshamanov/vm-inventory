@@ -1,0 +1,17 @@
+[Unit]
+Description=Infrastructure Inventory ESXi Exporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=/usr/local/bin/bin-update.sh inventory-exporter /usr/local/bin/inventory-exporter
+ExecStart=/usr/local/bin/inventory-exporter --config.file=/etc/inventory-exporter/esxi.yaml --web.listen-address=:9172
+Restart=always
+RestartSec=30
+
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=20
+
+[Install]
+WantedBy=multi-user.target
