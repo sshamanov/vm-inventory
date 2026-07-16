@@ -103,7 +103,7 @@ func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
 
 		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
-		if info := c.virshIgnoreError(ctx, "pool-info", name); info != "" {
+		if info := c.virshNoQuiet(ctx, "pool-info", name); info != "" {
 			p.TotalBytes = parsePoolInfo(info, "Capacity")
 			p.AvailBytes = parsePoolInfo(info, "Available")
 		}
@@ -124,6 +124,16 @@ func (c *virshConn) virshCtx(ctx context.Context, args ...string) (string, error
 func (c *virshConn) virshIgnoreError(ctx context.Context, args ...string) string {
 	s, _ := c.virshCtx(ctx, args...)
 	return s
+}
+
+// virshNoQuiet runs virsh WITHOUT the -q flag — needed for commands
+// like pool-info where we parse labeled output (Capacity:, Available:).
+func (c *virshConn) virshNoQuiet(ctx context.Context, args ...string) string {
+	out, err := exec.CommandContext(ctx, "virsh", args...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func parseVirshStat(output, key string) int {
