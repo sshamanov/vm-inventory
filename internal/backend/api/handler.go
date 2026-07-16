@@ -150,7 +150,8 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.snapshotMu.Unlock()
 
-	// Perform a refresh from Prometheus.
+	// Clear and rebuild observation index from Prometheus.
+	h.idx.Clear()
 	ctx := r.Context()
 	qr, err := h.promClient.QueryInstant(ctx, prometheus.QueryAllInventory())
 	if err != nil {

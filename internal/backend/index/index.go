@@ -113,6 +113,14 @@ type ResourceObservation struct {
 	IPs         []prometheus.HostIPRecord
 }
 
+// Clear removes all observations — used before a full refresh rebuild.
+func (idx *ObservationIndex) Clear() {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	idx.hosts = make(map[string]*HostObservation)
+	idx.resources = make(map[string]*ResourceObservation)
+}
+
 // NewObservationIndex creates an empty index.
 func NewObservationIndex() *ObservationIndex {
 	return &ObservationIndex{

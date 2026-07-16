@@ -8,6 +8,7 @@ let vmSort = { col: "name", asc: true };
 
 document.addEventListener("DOMContentLoaded", () => {
   loadInventory();
+  setInterval(loadInventory, 60000); // auto-refresh every 60s
   document.getElementById("search").addEventListener("input", debounce(onSearch, 200));
 });
 
