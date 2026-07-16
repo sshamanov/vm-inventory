@@ -1,6 +1,7 @@
 package normalizer
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -120,6 +121,45 @@ func (n *Normalizer) buildGeos(
 				}
 			}
 
+			// Merge hugepages.
+			var hugepages []shared.HugepagePool
+			var hpTotal, hpFree int64
+			for pageSize, total := range obs.HugepagesTotal {
+				var ps int64
+				fmt.Sscanf(pageSize, "%d", &ps)
+				free := obs.HugepagesFree[pageSize]
+				hpTotal += int64(total)
+				hpFree += int64(free)
+				hugepages = append(hugepages, shared.HugepagePool{
+					PageSizeBytes: ps,
+					TotalBytes:    int64(total),
+					FreeBytes:     &[]int64{int64(free)}[0],
+				})
+			}
+			host.Memory.HugepagesTotalBytes = hpTotal
+			if hpFree > 0 {
+				host.Memory.HugepagesFreeBytes = &hpFree
+			}
+			host.Memory.Hugepages = hugepages
+
+			// Merge block devices — group by 8% capacity tolerance (§16.3).
+			host.Disks = groupDisks(obs.BlockDevices)
+
+			// Merge filesystems — deduplicate by ID.
+			host.Filesystems = dedupFilesystems(obs.Filesystems, now, shared.UILivenessWindow)
+
+			// Merge storage pools.
+			for _, p := range obs.StoragePools {
+				avail := int64(p.AvailBytes)
+				host.StoragePools = append(host.StoragePools, shared.StoragePool{
+					PoolID:         p.PoolID,
+					PoolName:       p.PoolName,
+					PoolType:       p.PoolType,
+					TotalBytes:     int64(p.TotalBytes),
+					AvailableBytes: &avail,
+				})
+			}
+
 			if !index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
 				host.LastSeen = &obs.LastSeen
 			}
@@ -226,6 +266,69 @@ func toLower(s string) string {
 }
 
 func int64Ptr(v int64) *int64 { return &v }
+
+// groupDisks groups block devices by 8% capacity tolerance (§16.3).
+func groupDisks(devices []prometheus.BlockDeviceRecord) []shared.DiskGroup {
+	if len(devices) == 0 {
+		return nil
+	}
+	// Sort by size ascending.
+	sort.Slice(devices, func(i, j int) bool { return devices[i].SizeBytes < devices[j].SizeBytes })
+
+	var groups []shared.DiskGroup
+	groupRef := devices[0].SizeBytes
+	count := 1
+	for i := 1; i < len(devices); i++ {
+		diff := devices[i].SizeBytes - groupRef
+		if diff < 0 {
+			diff = -diff
+		}
+		if float64(diff)/float64(groupRef) <= 0.08 {
+			count++
+			if devices[i].SizeBytes < groupRef {
+				groupRef = devices[i].SizeBytes
+			}
+		} else {
+			groups = append(groups, shared.DiskGroup{SizeBytes: int64(groupRef), Count: count})
+			groupRef = devices[i].SizeBytes
+			count = 1
+		}
+	}
+	groups = append(groups, shared.DiskGroup{SizeBytes: int64(groupRef), Count: count})
+	return groups
+}
+
+// dedupFilesystems merges filesystem records by filesystem_id (§16.4).
+func dedupFilesystems(records []prometheus.FilesystemRecord, now time.Time, window time.Duration) []shared.Filesystem {
+	byID := make(map[string]*shared.Filesystem)
+	var order []string
+	for _, r := range records {
+		fs, ok := byID[r.FilesystemID]
+		if !ok {
+			fs = &shared.Filesystem{
+				FilesystemID:   r.FilesystemID,
+				FilesystemType: r.FilesystemType,
+			}
+			byID[r.FilesystemID] = fs
+			order = append(order, r.FilesystemID)
+		}
+		if r.TotalBytes > 0 {
+			fs.TotalBytes = int64(r.TotalBytes)
+		}
+		if r.AvailBytes > 0 {
+			avail := int64(r.AvailBytes)
+			fs.AvailableBytes = &avail
+		}
+		if r.Mountpoint != "" {
+			fs.Mountpoints = append(fs.Mountpoints, r.Mountpoint)
+		}
+	}
+	var result []shared.Filesystem
+	for _, id := range order {
+		result = append(result, *byID[id])
+	}
+	return result
+}
 
 // MergeIPs attaches IP records to hosts.
 func MergeIPs(host *shared.Host, ips []prometheus.HostIPRecord) {

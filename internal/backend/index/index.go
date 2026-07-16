@@ -17,17 +17,32 @@ type ObservationIndex struct {
 
 // HostObservation tracks a host's latest observation with joined metric data.
 type HostObservation struct {
-	Record      prometheus.HostInfoRecord
-	LastSeen    time.Time
-	RefreshID   string
-	IPs         []prometheus.HostIPRecord
-	CPUSockets  float64
-	CPUCores    float64
-	CPUThreads  float64
-	CPUModel    string
-	CPUUsage    float64
-	MemoryTotal float64
-	MemoryAvail float64
+	Record          prometheus.HostInfoRecord
+	LastSeen        time.Time
+	RefreshID       string
+	IPs             []prometheus.HostIPRecord
+	CPUSockets      float64
+	CPUCores        float64
+	CPUThreads      float64
+	CPUModel        string
+	CPUUsage        float64
+	MemoryTotal     float64
+	MemoryAvail     float64
+	BlockDevices    []prometheus.BlockDeviceRecord
+	Filesystems     []prometheus.FilesystemRecord
+	StoragePools    []prometheus.StoragePoolRecord
+	HugepagesTotal  map[string]float64 // page_size -> total_bytes
+	HugepagesFree   map[string]float64 // page_size -> free_bytes
+}
+
+// InitMaps ensures lazy-allocated maps are initialized.
+func (h *HostObservation) InitMaps() {
+	if h.HugepagesTotal == nil {
+		h.HugepagesTotal = make(map[string]float64)
+	}
+	if h.HugepagesFree == nil {
+		h.HugepagesFree = make(map[string]float64)
+	}
 }
 
 // ResourceObservation tracks a resource's latest observation.

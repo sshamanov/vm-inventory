@@ -257,6 +257,54 @@ func DecodeResourceInfo(m MetricResult) ResourceInfoRecord {
 	}
 }
 
+// DecodeBlockDevice extracts a BlockDeviceRecord.
+func DecodeBlockDevice(m MetricResult, metricName string) BlockDeviceRecord {
+	r := BlockDeviceRecord{
+		HostID:     m.Metric[shared.LabelHostID],
+		DeviceID:   m.Metric[shared.LabelDeviceID],
+		DeviceName: m.Metric[shared.LabelDeviceName],
+		Model:      m.Metric[shared.LabelModel],
+	}
+	if metricName == shared.MetricHostBlockDeviceBytes {
+		r.SizeBytes = ParseValue(m)
+	}
+	return r
+}
+
+// DecodeFilesystem extracts a FilesystemRecord.
+func DecodeFilesystem(m MetricResult, metricName string) FilesystemRecord {
+	r := FilesystemRecord{
+		HostID:         m.Metric[shared.LabelHostID],
+		FilesystemID:   m.Metric[shared.LabelFilesystemID],
+		FilesystemType: m.Metric[shared.LabelFilesystemType],
+		Mountpoint:     m.Metric[shared.LabelMountpoint],
+	}
+	switch metricName {
+	case shared.MetricHostFilesystemTotalBytes:
+		r.TotalBytes = ParseValue(m)
+	case shared.MetricHostFilesystemAvailBytes:
+		r.AvailBytes = ParseValue(m)
+	}
+	return r
+}
+
+// DecodeStoragePool extracts a StoragePoolRecord.
+func DecodeStoragePool(m MetricResult, metricName string) StoragePoolRecord {
+	r := StoragePoolRecord{
+		HostID:   m.Metric[shared.LabelHostID],
+		PoolID:   m.Metric[shared.LabelPoolID],
+		PoolName: m.Metric[shared.LabelPoolName],
+		PoolType: m.Metric[shared.LabelPoolType],
+	}
+	switch metricName {
+	case shared.MetricHostStoragePoolTotalBytes:
+		r.TotalBytes = ParseValue(m)
+	case shared.MetricHostStoragePoolAvailBytes:
+		r.AvailBytes = ParseValue(m)
+	}
+	return r
+}
+
 // ParseValue extracts the numeric value from a Prometheus result.
 func ParseValue(m MetricResult) float64 {
 	if len(m.Value) >= 2 {

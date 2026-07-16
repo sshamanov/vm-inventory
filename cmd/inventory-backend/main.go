@@ -226,5 +226,29 @@ func processMetricResult(obsIndex *index.ObservationIndex, result prometheus.Met
 				Family:  result.Metric["family"],
 			})
 		}, now)
+	case "inventory_host_block_device_info", "inventory_host_block_device_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.BlockDevices = append(h.BlockDevices, prometheus.DecodeBlockDevice(result, name))
+		}, now)
+	case "inventory_host_filesystem_info", "inventory_host_filesystem_total_bytes",
+		"inventory_host_filesystem_available_bytes", "inventory_host_filesystem_mount_info":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.Filesystems = append(h.Filesystems, prometheus.DecodeFilesystem(result, name))
+		}, now)
+	case "inventory_host_storage_pool_info", "inventory_host_storage_pool_total_bytes",
+		"inventory_host_storage_pool_available_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.StoragePools = append(h.StoragePools, prometheus.DecodeStoragePool(result, name))
+		}, now)
+	case "inventory_host_hugepages_total_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.InitMaps()
+			h.HugepagesTotal[result.Metric["page_size_bytes"]] = prometheus.ParseValue(result)
+		}, now)
+	case "inventory_host_hugepages_free_bytes":
+		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
+			h.InitMaps()
+			h.HugepagesFree[result.Metric["page_size_bytes"]] = prometheus.ParseValue(result)
+		}, now)
 	}
 }
