@@ -140,6 +140,18 @@ func main() {
 		}()
 	}
 
+	// Expose version info as a metric.
+	versionReg := prometheus.NewRegistry()
+	versionReg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "inventory_exporter_info",
+		Help: "Exporter version and commit information.",
+		ConstLabels: map[string]string{
+			"version": version.Version,
+			"commit":  version.Commit,
+		},
+	}, func() float64 { return 1 }))
+	gatherer.set("version", versionReg)
+
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
