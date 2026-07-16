@@ -64,12 +64,12 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 			continue
 		}
 		sizeBytes := int64(0)
-		if sizeStr := c.virshIgnoreError(ctx, "domblkinfo", uuid, fields[0]); sizeStr != "" {
+		if sizeStr := c.virshIgnoreError(ctx, "domblkinfo", uuid, fields[2]); sizeStr != "" {
 			if v := parseVirshStat(sizeStr, "Capacity"); v > 0 {
 				sizeBytes = int64(v)
 			}
 		}
-		d.Disks = append(d.Disks, LibvirtDisk{Name: fields[0], SizeBytes: sizeBytes})
+		d.Disks = append(d.Disks, LibvirtDisk{Name: fields[2], SizeBytes: sizeBytes})
 	}
 
 	// IPs from QEMU agent.
@@ -98,7 +98,7 @@ func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 		if len(fields) < 5 || fields[4] != "active" {
 			continue
 		}
-		name := fields[0]
+		name := fields[2]
 		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
 
 		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
