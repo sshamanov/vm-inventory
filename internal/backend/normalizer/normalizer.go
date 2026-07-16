@@ -145,11 +145,12 @@ func (n *Normalizer) buildGeos(
 			// Merge block devices — group by 8% capacity tolerance (§16.3).
 			host.Disks = groupDisks(obs.BlockDevices)
 
-			// Merge filesystems — deduplicate by ID.
-			host.Filesystems = dedupFilesystems(obs.Filesystems, now, shared.UILivenessWindow)
-
-			// Merge storage pools (LVM for KVM, datastores for ESXi, dir/btrfs/zfs for LXD).
-			// Skip the libvirt "default" pool.
+			// Merge storage pools by type.
+			// KVM host: show LVM pools (skip filesystems).
+			// ESXi host: show datastores (skip filesystems).
+			// LXD host: show LXD pools as combined filesystem usage.
+			// Plain Linux: show filesystems only.
+			hasPools := len(obs.StoragePools) > 0
 			for _, p := range obs.StoragePools {
 				if p.PoolName == "default" {
 					continue
@@ -162,6 +163,10 @@ func (n *Normalizer) buildGeos(
 					TotalBytes:     int64(p.TotalBytes),
 					AvailableBytes: &avail,
 				})
+			}
+			// Only show filesystems when there are no platform storage pools.
+			if !hasPools {
+				host.Filesystems = dedupFilesystems(obs.Filesystems, now, shared.UILivenessWindow)
 			}
 
 			if !index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
