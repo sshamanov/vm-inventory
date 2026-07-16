@@ -24,7 +24,7 @@ build-backend:
 	docker run --rm --network host --tmpfs /root/.cache/go-build:exec \
 		-v "$(shell pwd)":/src -w /src \
 		golang:1.22-alpine sh -c \
-		'go build -ldflags="$(LDFLAGS)" -o /src/bin/inventory-backend ./cmd/inventory-backend/'
+		'CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o /src/bin/inventory-backend ./cmd/inventory-backend/'
 
 # --- Docker images (require binaries built first) ---
 

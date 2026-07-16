@@ -44,7 +44,7 @@ jobs:
       - name: Build backend
         run: |
           COMMIT=$(git rev-parse --short HEAD)
-          go build -ldflags="-s -w -X vm-inventory/internal/version.Version=main -X vm-inventory/internal/version.Commit=$COMMIT" \
+          CGO_ENABLED=0 go build -ldflags="-s -w -X vm-inventory/internal/version.Version=main -X vm-inventory/internal/version.Commit=$COMMIT" \
             -o bin/inventory-backend ./cmd/inventory-backend/
 
       - name: Upload exporter binary
