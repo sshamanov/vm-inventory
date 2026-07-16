@@ -77,6 +77,12 @@ func (n *Normalizer) buildGeos(
 				hostIPs = append(hostIPs, ip.Address)
 			}
 
+		totalMem := int64(obs.MemoryTotal)
+			availMem := int64(obs.MemoryAvail)
+			usedMem := totalMem - availMem
+			if usedMem < 0 {
+				usedMem = 0
+			}
 			host := shared.Host{
 				ID:               obs.Record.HostID,
 				Description:      obs.Record.Description,
@@ -95,8 +101,9 @@ func (n *Normalizer) buildGeos(
 					Threads: int(obs.CPUThreads),
 				},
 				Memory: shared.MemoryInfo{
-					TotalBytes:     int64(obs.MemoryTotal),
-					AvailableBytes: int64Ptr(int64(obs.MemoryAvail)),
+					TotalBytes:     totalMem,
+					AvailableBytes: &availMem,
+					UsedBytes:      &usedMem,
 				},
 				ObservationState: index.ObservationState(obs.LastSeen, now, window),
 			}
