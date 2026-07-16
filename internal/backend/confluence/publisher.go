@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/normalizer"
@@ -48,7 +49,7 @@ func NewPublisher(
 	logger *slog.Logger,
 ) *Publisher {
 	return &Publisher{
-		client:        &http.Client{},
+		client:        &http.Client{Timeout: 30 * time.Second},
 		confluenceURL: strings.TrimRight(confluenceURL, "/"),
 		username:      username,
 		password:      password,
@@ -70,7 +71,8 @@ func (p *Publisher) Publish(ctx context.Context) PublishResult {
 
 	// Compare with stored hash.
 	st, _ := p.stateStore.Load()
-	if st.LastConfluenceHash == hash {
+	shouldPublish := st.LastConfluenceHash != hash
+	if !shouldPublish {
 		p.logger.Info("confluence content unchanged, skipping publication")
 		return Unchanged
 	}
@@ -84,9 +86,11 @@ func (p *Publisher) Publish(ctx context.Context) PublishResult {
 		return Failed
 	}
 
-	// Update state.
-	st.LastConfluenceHash = hash
-	p.stateStore.Save(st)
+	// Atomically update stored hash.
+	p.stateStore.Update(func(st *state.State) (*state.State, error) {
+		st.LastConfluenceHash = hash
+		return st, nil
+	})
 
 	p.logger.Info("confluence page published")
 	return Published

@@ -167,11 +167,12 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Persist last successful refresh.
-	st, _ := h.stateStore.Load()
-	now := time.Now()
-	st.LastSuccessfulRefresh = &now
-	h.stateStore.Save(st)
+	// Persist last successful refresh atomically.
+	h.stateStore.Update(func(st *state.State) (*state.State, error) {
+		now := time.Now()
+		st.LastSuccessfulRefresh = &now
+		return st, nil
+	})
 
 	// Rebuild cached snapshot after refresh.
 	h.rebuildSnapshot()

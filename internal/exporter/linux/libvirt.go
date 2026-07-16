@@ -20,8 +20,8 @@ type LibvirtCollector struct {
 type LibvirtConnection interface {
 	Connect() error
 	Disconnect() error
-	ListDomains() ([]LibvirtDomain, error)
-	ListStoragePools() ([]LibvirtPool, error)
+	ListDomains(ctx context.Context) ([]LibvirtDomain, error)
+	ListStoragePools(ctx context.Context) ([]LibvirtPool, error)
 }
 
 // LibvirtDomain represents a libvirt domain's collected data.
@@ -73,12 +73,12 @@ func (c *LibvirtCollector) Collect(ctx context.Context) (*exporter.CollectionRes
 	}
 	defer c.conn.Disconnect()
 
-	domains, err := c.conn.ListDomains()
+	domains, err := c.conn.ListDomains(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing domains: %w", err)
 	}
 
-	pools, err := c.conn.ListStoragePools()
+	pools, err := c.conn.ListStoragePools(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing storage pools: %w", err)
 	}

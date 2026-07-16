@@ -172,7 +172,9 @@ func main() {
 		<-sigCh
 		logger.Info("shutting down")
 		cancel()
-		server.Shutdown(context.Background())
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		server.Shutdown(shutdownCtx)
 	}()
 
 	logger.Info("listening", "address", *listenAddr)

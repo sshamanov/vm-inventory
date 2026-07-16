@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -8,10 +9,8 @@ import (
 )
 
 // virshConn implements LibvirtConnection via virsh CLI.
-// go-libvirt is the long-term goal, but virsh is reliable and available everywhere.
 type virshConn struct{}
 
-// NewLibvirtConnection creates a virsh-backed connection.
 func NewLibvirtConnection() (LibvirtConnection, error) {
 	if _, err := exec.LookPath("virsh"); err != nil {
 		return nil, fmt.Errorf("virsh not found: %w", err)
@@ -19,58 +18,53 @@ func NewLibvirtConnection() (LibvirtConnection, error) {
 	return &virshConn{}, nil
 }
 
-func (c *virshConn) Connect() error    { return nil }
-func (c *virshConn) Disconnect() error  { return nil }
+func (c *virshConn) Connect() error   { return nil }
+func (c *virshConn) Disconnect() error { return nil }
 
-func (c *virshConn) ListDomains() ([]LibvirtDomain, error) {
-	out, err := exec.Command("virsh", "-q", "list", "--uuid", "--state-running").Output()
+func (c *virshConn) ListDomains(ctx context.Context) ([]LibvirtDomain, error) {
+	out, err := c.virshCtx(ctx, "list", "--uuid", "--state-running")
 	if err != nil {
 		return nil, fmt.Errorf("virsh list: %w", err)
 	}
 
-	uuids := strings.Fields(string(out))
+	uuids := strings.Fields(out)
 	var domains []LibvirtDomain
-
 	for _, uuid := range uuids {
-		d, err := c.domainInfo(uuid)
+		d, err := c.domainInfo(ctx, uuid)
 		if err != nil {
 			continue
 		}
 		domains = append(domains, d)
 	}
-
 	return domains, nil
 }
 
-func (c *virshConn) domainInfo(uuid string) (LibvirtDomain, error) {
-	name := c.virsh("domname", uuid)
+func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain, error) {
+	name := c.virshIgnoreError(ctx, "domname", uuid)
 
 	d := LibvirtDomain{
 		UUID:        uuid,
 		Name:        name,
-		Description: c.virsh("desc", uuid),
+		Description: c.virshIgnoreError(ctx, "desc", uuid),
 	}
 
-	// vCPU count.
-	if v := c.virsh("domstats", "--vcpu", uuid); v != "" {
+	if v := c.virshIgnoreError(ctx, "domstats", "--vcpu", uuid); v != "" {
 		d.VCPUs = parseVirshStat(v, "vcpu.current")
 	}
-
-	// Memory.
-	if v := c.virsh("domstats", "--balloon", uuid); v != "" {
+	if v := c.virshIgnoreError(ctx, "domstats", "--balloon", uuid); v != "" {
 		kb := parseVirshStat(v, "balloon.current")
 		d.MemoryBytes = int64(kb) * 1024
 	}
 
-	// Disks from domblklist.
-	blkOut, _ := exec.Command("virsh", "-q", "domblklist", "--details", uuid).Output()
-	for _, line := range strings.Split(string(blkOut), "\n") {
+	// Disks.
+	out, _ := exec.CommandContext(ctx, "virsh", "-q", "domblklist", "--details", uuid).Output()
+	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 4 || fields[1] != "disk" {
 			continue
 		}
 		sizeBytes := int64(0)
-		if sizeStr := c.virsh("domblkinfo", uuid, fields[0]); sizeStr != "" {
+		if sizeStr := c.virshIgnoreError(ctx, "domblkinfo", uuid, fields[0]); sizeStr != "" {
 			if v := parseVirshStat(sizeStr, "Capacity"); v > 0 {
 				sizeBytes = int64(v)
 			}
@@ -78,13 +72,13 @@ func (c *virshConn) domainInfo(uuid string) (LibvirtDomain, error) {
 		d.Disks = append(d.Disks, LibvirtDisk{Name: fields[0], SizeBytes: sizeBytes})
 	}
 
-	// IPs.
-	if ifaces := c.virsh("domifaddr", "--source=agent", uuid); ifaces != "" {
+	// IPs from QEMU agent.
+	if ifaces := c.virshIgnoreError(ctx, "domifaddr", "--source=agent", uuid); ifaces != "" {
 		d.IPs = parseIPs(ifaces)
 	}
 
-	// Guest OS from QEMU agent.
-	guestOS := c.virsh("qemu-agent-command", uuid, `{"execute":"guest-get-osinfo"}`)
+	// Guest OS.
+	guestOS := c.virshIgnoreError(ctx, "qemu-agent-command", uuid, `{"execute":"guest-get-osinfo"}`)
 	if guestOS != "" {
 		d.GuestOS = extractJSON(guestOS, "name")
 	}
@@ -92,44 +86,43 @@ func (c *virshConn) domainInfo(uuid string) (LibvirtDomain, error) {
 	return d, nil
 }
 
-func (c *virshConn) ListStoragePools() ([]LibvirtPool, error) {
-	out, err := exec.Command("virsh", "-q", "pool-list", "--type", "logical", "--details").Output()
+func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error) {
+	out, err := c.virshCtx(ctx, "pool-list", "--type", "logical", "--details")
 	if err != nil {
 		return nil, fmt.Errorf("virsh pool-list: %w", err)
 	}
 
 	var pools []LibvirtPool
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 5 || fields[4] != "active" {
 			continue
 		}
 		name := fields[0]
-		uuid := c.virsh("pool-uuid", name)
+		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
 
-		p := LibvirtPool{
-			UUID:     uuid,
-			Name:     name,
-			PoolType: "logical",
-		}
-
-		if info := c.virsh("pool-info", name); info != "" {
+		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
+		if info := c.virshIgnoreError(ctx, "pool-info", name); info != "" {
 			p.TotalBytes = parsePoolInfo(info, "Capacity") * 1024
 			p.AvailBytes = parsePoolInfo(info, "Available") * 1024
 		}
-
 		pools = append(pools, p)
 	}
-
 	return pools, nil
 }
 
-func (c *virshConn) virsh(args ...string) string {
-	out, err := exec.Command("virsh", append([]string{"-q"}, args...)...).Output()
+func (c *virshConn) virshCtx(ctx context.Context, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, "virsh", append([]string{"-q"}, args...)...).Output()
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
+}
+
+// virshIgnoreError runs virsh silently, returning empty string on any error.
+func (c *virshConn) virshIgnoreError(ctx context.Context, args ...string) string {
+	s, _ := c.virshCtx(ctx, args...)
+	return s
 }
 
 func parseVirshStat(output, key string) int {
@@ -162,8 +155,7 @@ func parsePoolInfo(output, field string) int64 {
 func parseIPs(output string) []string {
 	var ips []string
 	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		for _, f := range fields {
+		for _, f := range strings.Fields(line) {
 			if strings.Count(f, ".") == 3 || strings.Count(f, ":") >= 2 {
 				ips = append(ips, f)
 			}
@@ -173,7 +165,6 @@ func parseIPs(output string) []string {
 }
 
 func extractJSON(output, key string) string {
-	// Simple extraction: {"key":"value"} or {"key": "value"}.
 	search := fmt.Sprintf(`"%s":`, key)
 	idx := strings.Index(output, search)
 	if idx < 0 {
@@ -189,4 +180,3 @@ func extractJSON(output, key string) string {
 	}
 	return ""
 }
-

@@ -117,6 +117,23 @@ func IsUsageFresh(lastSeen, now time.Time, window time.Duration) bool {
 	return now.Sub(lastSeen) <= window
 }
 
+// Prune removes observations older than the given window.
+func (idx *ObservationIndex) Prune(window time.Duration) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	cutoff := time.Now().Add(-window)
+	for id, obs := range idx.hosts {
+		if obs.LastSeen.Before(cutoff) {
+			delete(idx.hosts, id)
+		}
+	}
+	for id, obs := range idx.resources {
+		if obs.LastSeen.Before(cutoff) {
+			delete(idx.resources, id)
+		}
+	}
+}
+
 // HostCount returns the total number of hosts in the index.
 func (idx *ObservationIndex) HostCount() int {
 	idx.mu.RLock()

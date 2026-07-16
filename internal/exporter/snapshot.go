@@ -94,30 +94,20 @@ func (m *SnapshotManager) CommitSnapshot(
 	result *CollectionResult,
 	maxAge time.Duration,
 ) error {
-	m.mu.Lock()
-	snap := m.snapshots[collectorName]
-	m.mu.Unlock()
-
+	// Build registry outside the lock (can be slow).
 	reg := prometheus.NewRegistry()
-
-	// Register all metric families.
 	for _, mf := range result.Metrics {
 		if err := registerMetricFamily(reg, mf); err != nil {
 			return fmt.Errorf("registering %s: %w", mf.Name, err)
 		}
 	}
-
-	// Register collector health metrics.
 	healthReg := prometheus.NewRegistry()
 	registerCollectorHealth(healthReg, m.exporterHost, collectorName, sourceHost, result.Timestamp, maxAge, true)
-	// Merge health into the registry by gathering and re-registering.
 	healthFamilies, _ := healthReg.Gather()
 	for _, mf := range healthFamilies {
-		// Simple approach: register as untyped (info-style gauge).
 		for _, m := range mf.Metric {
 			g := prometheus.NewGauge(prometheus.GaugeOpts{
-				Name: mf.GetName(),
-				Help: mf.GetHelp(),
+				Name: mf.GetName(), Help: mf.GetHelp(),
 				ConstLabels: labelPairsToMap(m.Label),
 			})
 			g.Set(m.GetGauge().GetValue())
@@ -125,10 +115,14 @@ func (m *SnapshotManager) CommitSnapshot(
 		}
 	}
 
+	// Atomically update snapshot fields under lock.
+	m.mu.Lock()
+	snap := m.snapshots[collectorName]
 	snap.registry = reg
 	snap.timestamp = result.Timestamp
 	snap.expiresAt = result.Timestamp.Add(maxAge)
 	snap.valid = true
+	m.mu.Unlock()
 
 	snap.running.Store(false)
 	return nil
@@ -136,37 +130,54 @@ func (m *SnapshotManager) CommitSnapshot(
 
 // FailSnapshot marks a collector as failed while keeping the previous snapshot (§9.3).
 func (m *SnapshotManager) FailSnapshot(collectorName, sourceHost string) {
-	m.mu.RLock()
-	snap, ok := m.snapshots[collectorName]
-	m.mu.RUnlock()
-	if !ok {
-		return
-	}
-
-	// Build a health-only registry showing failure.
 	reg := prometheus.NewRegistry()
-	registerCollectorHealth(reg, m.exporterHost, collectorName, sourceHost, snap.timestamp, time.Duration(0), false)
-	snap.registry = reg // swap to show failed health only
-	snap.running.Store(false)
+	registerCollectorHealth(reg, m.exporterHost, collectorName, sourceHost, time.Time{}, time.Duration(0), false)
+
+	m.mu.Lock()
+	snap, ok := m.snapshots[collectorName]
+	if ok {
+		snap.registry = reg
+		snap.valid = false
+	}
+	m.mu.Unlock()
+
+	if ok {
+		snap.running.Store(false)
+	}
 }
 
 // GetSnapshot returns the current registry and whether it's valid.
 func (m *SnapshotManager) GetSnapshot(collectorName string) (*prometheus.Registry, bool) {
 	m.mu.RLock()
 	snap, ok := m.snapshots[collectorName]
-	m.mu.RUnlock()
 	if !ok {
+		m.mu.RUnlock()
 		return nil, false
 	}
-	// Check expiry (§9.3: stop exposing inventory after max_snapshot_age).
-	now := time.Now()
-	if snap.expiresAt.Before(now) && snap.valid {
-		// Expired: keep health metrics but remove inventory.
-		reg := prometheus.NewRegistry()
-		registerCollectorHealth(reg, m.exporterHost, collectorName, "", snap.timestamp, time.Duration(0), false)
-		return reg, false
+	valid := snap.valid
+	expiresAt := snap.expiresAt
+	ts := snap.timestamp
+	reg := snap.registry
+	m.mu.RUnlock()
+
+	// Check expiry outside lock (reads are snapshotted).
+	if expiresAt.Before(time.Now()) && valid {
+		expiredReg := prometheus.NewRegistry()
+		registerCollectorHealth(expiredReg, m.exporterHost, collectorName, "", ts, time.Duration(0), false)
+		return expiredReg, false
 	}
-	return snap.registry, snap.valid
+	return reg, valid
+}
+
+// SkippedRuns returns the count of skipped collection runs for a collector.
+func (m *SnapshotManager) SkippedRuns(collectorName string) int64 {
+	m.mu.RLock()
+	snap, ok := m.snapshots[collectorName]
+	m.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	return snap.skippedRuns.Load()
 }
 
 // registerMetricFamily converts a typed MetricFamily to a Prometheus metric and registers it.

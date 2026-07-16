@@ -37,10 +37,11 @@ func CleanDescription(s string) string {
 	// Truncate to max bytes on a UTF-8 boundary.
 	if len(result) > MaxDescriptionBytes {
 		result = result[:MaxDescriptionBytes]
-		// Walk back to the last valid UTF-8 boundary.
 		for len(result) > 0 && !utf8.ValidString(result) {
 			result = result[:len(result)-1]
 		}
+		// Clone to free the original backing array (Go string slicing retains it).
+		result = strings.Clone(result)
 	}
 
 	return result
