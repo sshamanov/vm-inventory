@@ -53,7 +53,7 @@ func (mg *multiGatherer) Gather() ([]*dto.MetricFamily, error) {
 
 func main() {
 	configFile := flag.String("config.file", "", "Path to configuration file (optional)")
-	listenAddr := flag.String("web.listen-address", "0.0.0.0:9171", "Address to listen on for HTTP requests")
+	listenAddr := flag.String("web.listen-address", ":9171", "Address to listen on for HTTP requests")
 	versionFlag := flag.Bool("version", false, "Show version and exit")
 	flag.BoolVar(versionFlag, "v", false, "Show version and exit")
 

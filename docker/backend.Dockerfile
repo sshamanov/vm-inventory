@@ -9,7 +9,7 @@ COPY bin/inventory-backend /usr/bin/inventory-backend
 COPY web/ /usr/share/inventory-backend/web/
 
 ENV WEB_DIR=/usr/share/inventory-backend/web/
-ENV LISTEN_ADDR=0.0.0.0:8080
+ENV LISTEN_ADDR=:8080
 
 EXPOSE 8080
 

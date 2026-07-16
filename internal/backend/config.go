@@ -19,7 +19,7 @@ type Config struct {
 // LoadConfig reads configuration from environment variables.
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
-		ListenAddr: "0.0.0.0:8080",
+		ListenAddr: ":8080",
 		StatePath:  "/data/state.json",
 	}
 
