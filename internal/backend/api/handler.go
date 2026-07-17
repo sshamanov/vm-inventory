@@ -76,7 +76,6 @@ func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 
 	if snapshot == nil {
 		snapshot, etag = h.rebuildSnapshot()
-		h.lastRefresh = time.Now()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

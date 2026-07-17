@@ -77,6 +77,7 @@ func main() {
 	}
 
 	handler := api.NewHandler(obsIndex, promClient, stateStore, logger)
+	handler.MarkRefreshed() // set initial cache timestamp after startup rebuild
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
