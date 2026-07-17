@@ -8,20 +8,30 @@ import (
 )
 
 // lxcConn implements LXDClient via lxc CLI.
-type lxcConn struct{}
+type lxcConn struct{ bin string }
+
+func (c *lxcConn) lxc(args ...string) *exec.Cmd {
+	cmd := exec.Command(c.bin, args...)
+	cmd.Env = nil // clean environment — systemd env can break lxc
+	return cmd
+}
+
+var lxcPaths = []string{"/snap/bin/lxc", "/usr/bin/lxc", "lxc"}
 
 func NewLXDConnection() (LXDClient, error) {
-	if _, err := exec.LookPath("lxc"); err != nil {
-		return nil, fmt.Errorf("lxc not found: %w", err)
+	for _, p := range lxcPaths {
+		if _, err := exec.LookPath(p); err == nil {
+			return &lxcConn{bin: p}, nil
+		}
 	}
-	return &lxcConn{}, nil
+	return nil, fmt.Errorf("lxc not found (tried snap, deb, and PATH)")
 }
 
 func (c *lxcConn) Connect() error   { return nil }
 func (c *lxcConn) Disconnect() error { return nil }
 
 func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
-	out, err := exec.Command("lxc", "list", "--format", "json").Output()
+	out, err := c.lxc("list", "--format", "json").Output()
 	if err != nil {
 		return nil, fmt.Errorf("lxc list: %w", err)
 	}
@@ -83,7 +93,7 @@ func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
 }
 
 func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
-	out, err := exec.Command("lxc", "storage", "list", "--format", "json").Output()
+	out, err := c.lxc("storage", "list", "--format", "json").Output()
 	if err != nil {
 		return nil, fmt.Errorf("lxc storage list: %w", err)
 	}
@@ -107,7 +117,7 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 			}
 		}
 
-		infoOut, err := exec.Command("lxc", "storage", "info", e.Name, "--format", "json").Output()
+		infoOut, err := c.lxc("storage", "info", e.Name, "--format", "json").Output()
 		if err == nil {
 			var info struct {
 				Resources struct {
