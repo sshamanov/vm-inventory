@@ -65,7 +65,7 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 		}
 		sizeBytes := int64(0)
 		if sizeStr := c.virshIgnoreError(ctx, "domblkinfo", uuid, fields[2]); sizeStr != "" {
-			if v := parseVirshStat(sizeStr, "Capacity"); v > 0 {
+			if v := parseVirshStat(sizeStr, "Physical"); v > 0 {
 				sizeBytes = int64(v)
 			}
 		}
