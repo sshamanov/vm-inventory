@@ -84,8 +84,9 @@ type ESXiVM struct {
 
 // ESXiVMDisk holds VM disk data.
 type ESXiVMDisk struct {
-	Name      string
-	SizeBytes int64
+	Name          string
+	SizeBytes     int64
+	DatastoreName string
 }
 
 // NewESXiCollector creates a new ESXi collector.
@@ -270,6 +271,7 @@ func (c *ESXiCollector) buildVMMetrics(hostID string, vms []ESXiVM) []exporter.M
 					shared.LabelDiskID:        diskID,
 					shared.LabelDiskName:      disk.Name,
 					shared.LabelCapacitySource: shared.CapacityConfigured,
+					shared.LabelSourceName:    disk.DatastoreName,
 				},
 				Value: float64(disk.SizeBytes),
 			})

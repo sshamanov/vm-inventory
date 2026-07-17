@@ -95,7 +95,7 @@ targets:
     address: https://esxi-01.internal
     username: inventory-reader
     password: changeme
-    insecure_skip_verify: false
+    insecure_skip_verify: true  # defaults to true (ESXi uses self-signed certs)
 ESXI_EOF
 
 # 4. Install systemd units.

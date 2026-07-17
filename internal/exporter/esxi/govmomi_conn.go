@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/property"
-	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 )
@@ -80,7 +80,7 @@ func (c *govmomiClient) HostSystem(ctx context.Context) (ESXiHostHardware, error
 		CPUSockets:       int(s.Hardware.NumCpuPkgs),
 		CPUCores:         int(s.Hardware.NumCpuCores),
 		CPUThreads:       int(s.Hardware.NumCpuThreads),
-		MemoryTotalBytes: int64(s.Hardware.MemorySize) << 20, // MB to bytes
+		MemoryTotalBytes: int64(s.Hardware.MemorySize), // bytes (API returns bytes since vSphere 6.0)
 	}
 
 	cpuTotal := int64(s.Hardware.CpuMhz) * int64(s.Hardware.NumCpuCores)
@@ -88,23 +88,15 @@ func (c *govmomiClient) HostSystem(ctx context.Context) (ESXiHostHardware, error
 		hwInfo.CPUUsageRatio = float64(s.QuickStats.OverallCpuUsage) / float64(cpuTotal)
 	}
 	if s.QuickStats.OverallMemoryUsage > 0 {
-		hwInfo.MemoryAvailBytes = int64(s.Hardware.MemorySize)<<20 - int64(s.QuickStats.OverallMemoryUsage)<<20
+		// MemorySize is bytes, OverallMemoryUsage is MB (§10.4).
+		hwInfo.MemoryAvailBytes = int64(s.Hardware.MemorySize) - int64(s.QuickStats.OverallMemoryUsage)<<20
 	}
 
-	// Collect host IPs.
-	m := view.NewManager(c.client.Client)
-	v, err := m.CreateContainerView(ctx, host.Reference(), []string{"ManagedEntity"}, true)
-	if err == nil {
-		defer v.Destroy(ctx)
-		var hss []mo.HostSystem
-		err = v.Retrieve(ctx, []string{"HostSystem"}, []string{"config.network.vnic"}, &hss)
-		if err == nil {
-			for _, hs := range hss {
-				if hs.Config != nil && hs.Config.Network != nil {
-					for _, vnic := range hs.Config.Network.Vnic {
-						hwInfo.IPs = append(hwInfo.IPs, vnic.Spec.Ip.IpAddress)
-					}
-				}
+	// Collect host IPs from vmkernel interfaces (already retrieved via config.network).
+	if hw.Config != nil && hw.Config.Network != nil {
+		for _, vnic := range hw.Config.Network.Vnic {
+			if vnic.Spec.Ip != nil {
+				hwInfo.IPs = append(hwInfo.IPs, vnic.Spec.Ip.IpAddress)
 			}
 		}
 	}
@@ -201,7 +193,8 @@ func (c *govmomiClient) VirtualMachines(ctx context.Context) ([]ESXiVM, error) {
 				if disk, ok := dev.(*types.VirtualDisk); ok {
 					capacity := disk.CapacityInBytes
 					name := disk.DeviceInfo.GetDescription().Label
-					vm.Disks = append(vm.Disks, ESXiVMDisk{Name: name, SizeBytes: capacity})
+					dsName := extractDatastoreName(disk)
+					vm.Disks = append(vm.Disks, ESXiVMDisk{Name: name, SizeBytes: capacity, DatastoreName: dsName})
 				}
 			}
 		}
@@ -213,4 +206,33 @@ func (c *govmomiClient) VirtualMachines(ctx context.Context) ([]ESXiVM, error) {
 
 func (c *govmomiClient) Logout(ctx context.Context) error {
 	return c.client.Logout(ctx)
+}
+
+// extractDatastoreName parses the datastore name from a VirtualDisk backing filename.
+// Backing filenames are formatted as "[datastore1] path/to/disk.vmdk".
+func extractDatastoreName(disk *types.VirtualDisk) string {
+	if disk.VirtualDevice.Backing == nil {
+		return ""
+	}
+	// Try the most common backing type first.
+	if backing, ok := disk.VirtualDevice.Backing.(*types.VirtualDiskFlatVer2BackingInfo); ok {
+		return parseDatastoreName(backing.FileName)
+	}
+	// Fall back to generic file backing info.
+	if backing, ok := disk.VirtualDevice.Backing.(*types.VirtualDeviceFileBackingInfo); ok {
+		return parseDatastoreName(backing.FileName)
+	}
+	return ""
+}
+
+// parseDatastoreName extracts "datastore1" from "[datastore1] path/to/disk.vmdk".
+func parseDatastoreName(fileName string) string {
+	closeBracket := strings.IndexByte(fileName, ']')
+	if closeBracket < 0 {
+		return ""
+	}
+	if strings.HasPrefix(fileName, "[") && closeBracket > 1 {
+		return fileName[1:closeBracket]
+	}
+	return ""
 }
