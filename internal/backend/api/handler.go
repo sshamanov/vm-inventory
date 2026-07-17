@@ -304,17 +304,17 @@ func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp 
 		}, timestamp)
 	case "inventory_host_block_device_info", "inventory_host_block_device_bytes":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
-			ho.BlockDevices = append(ho.BlockDevices, prometheus.DecodeBlockDevice(result, name))
+			ho.MergeBlockDevice(prometheus.DecodeBlockDevice(result, name))
 		}, timestamp)
 	case "inventory_host_filesystem_info", "inventory_host_filesystem_total_bytes",
 		"inventory_host_filesystem_available_bytes", "inventory_host_filesystem_mount_info":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
-			ho.Filesystems = append(ho.Filesystems, prometheus.DecodeFilesystem(result, name))
+			ho.MergeFilesystem(prometheus.DecodeFilesystem(result, name))
 		}, timestamp)
 	case "inventory_host_storage_pool_info", "inventory_host_storage_pool_total_bytes",
 		"inventory_host_storage_pool_available_bytes":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
-			ho.StoragePools = append(ho.StoragePools, prometheus.DecodeStoragePool(result, name))
+			ho.MergeStoragePool(prometheus.DecodeStoragePool(result, name))
 		}, timestamp)
 	case "inventory_host_hugepages_total_bytes":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
