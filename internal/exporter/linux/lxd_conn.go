@@ -3,153 +3,186 @@ package linux
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
+	"io"
+	"net"
+	"net/http"
 	"strings"
+	"time"
 )
 
-// lxcConn implements LXDClient via lxc CLI (JSON output).
-type lxcConn struct{}
-
-// NewLXDConnection creates an lxc-backed LXD client.
-func NewLXDConnection() (LXDClient, error) {
-	if _, err := exec.LookPath("lxc"); err != nil {
-		return nil, fmt.Errorf("lxc not found: %w", err)
-	}
-	return &lxcConn{}, nil
+// lxdConn implements LXDClient via LXD REST API (Unix socket).
+// No external binary needed — talks directly to the LXD daemon.
+type lxdConn struct {
+	httpClient *http.Client
 }
 
-func (c *lxcConn) Connect() error   { return nil }
-func (c *lxcConn) Disconnect() error { return nil }
-
-func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
-	cmd := exec.Command("lxc", "list", "--format", "json")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("lxc list: %w", err)
+// NewLXDConnection connects to the local LXD daemon via Unix socket.
+func NewLXDConnection() (LXDClient, error) {
+	socket := "/var/snap/lxd/common/lxd/unix.socket"
+	if _, err := net.Dial("unix", socket); err != nil {
+		// Try the non-snap path.
+		socket = "/var/lib/lxd/unix.socket"
+		if _, err := net.Dial("unix", socket); err != nil {
+			return nil, fmt.Errorf("LXD socket not found at /var/snap/lxd/common/lxd/unix.socket or /var/lib/lxd/unix.socket")
+		}
 	}
 
-	var raw []map[string]interface{}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("parsing lxc list: %w", err)
-	}
+	return &lxdConn{
+		httpClient: &http.Client{
+			Transport: &http.Transport{
+				Dial: func(_, _ string) (net.Conn, error) {
+					return net.Dial("unix", socket)
+				},
+			},
+			Timeout: 10 * time.Second,
+		},
+	}, nil
+}
 
+func (c *lxdConn) Connect() error   { return nil }
+func (c *lxdConn) Disconnect() error { return nil }
+
+func (c *lxdConn) ListInstances() ([]LXDInstance, error) {
 	var instances []LXDInstance
-	for _, entry := range raw {
-		// Only running containers.
-		status := jsonGet(entry, "status")
-		if status == nil || fmt.Sprint(status) != "Running" {
+
+	// Recursively list instances from all projects.
+	projects := c.listProjects()
+
+	for _, project := range projects {
+		data, err := c.do("GET", "/1.0/instances?project="+project+"&recursion=1")
+		if err != nil {
 			continue
 		}
 
-		name := jsonGet(entry, "name")
-		if name == nil {
+		var resp struct {
+			Metadata []struct {
+				Name      string `json:"name"`
+				Status    string `json:"status"`
+				Config    map[string]string `json:"config"`
+				ExpandedConfig map[string]string `json:"expanded_config"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(data, &resp); err != nil {
 			continue
 		}
 
-		inst := LXDInstance{Name: fmt.Sprint(name)}
+		for _, inst := range resp.Metadata {
+			if inst.Status != "Running" {
+				continue
+			}
 
-		// Expanded config.
-		if config, ok := entry["expanded_config"].(map[string]interface{}); ok {
-			if v := jsonGet(config, "image.description"); v != nil {
-				inst.OSName = fmt.Sprint(v)
+			li := LXDInstance{Name: fmt.Sprintf("%s/%s", project, inst.Name)}
+
+			cfg := inst.ExpandedConfig
+			if cfg == nil {
+				cfg = inst.Config
 			}
-			if v := jsonGet(config, "limits.cpu"); v != nil {
-				if n, ok := parseNumber(fmt.Sprint(v)); ok {
-					cpulimit := int64(n)
-					inst.CPULimit = &cpulimit
+
+			if v, ok := cfg["image.description"]; ok {
+				li.OSName = v
+			}
+			if v, ok := cfg["limits.cpu"]; ok {
+				if n, ok2 := parseNumber(v); ok2 {
+					cpu := int64(n)
+					li.CPULimit = &cpu
 				}
 			}
-			if v := jsonGet(config, "limits.memory"); v != nil {
-				if n, ok := parseNumber(fmt.Sprint(v)); ok {
-					memlimit := int64(n)
-					inst.MemLimit = &memlimit
+			if v, ok := cfg["limits.memory"]; ok {
+				if n, ok2 := parseNumber(v); ok2 {
+					mem := int64(n)
+					li.MemLimit = &mem
 				}
 			}
-			if v := jsonGet(config, "volatile.last_state.power"); v != nil {
-				inst.Description = fmt.Sprint(v)
-			}
+			instances = append(instances, li)
 		}
-
-		instances = append(instances, inst)
 	}
 
 	return instances, nil
 }
 
-func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
-	cmd := exec.Command("lxc", "storage", "list", "--format", "json")
-	out, err := cmd.Output()
+// listProjects returns project names. Always includes "default".
+func (c *lxdConn) listProjects() []string {
+	names := []string{"default"}
+	data, err := c.do("GET", "/1.0/projects")
 	if err != nil {
-		return nil, fmt.Errorf("lxc storage list: %w", err)
+		return names
+	}
+	var raw struct {
+		Metadata []string `json:"metadata"`
+	}
+	if json.Unmarshal(data, &raw) != nil {
+		return names
+	}
+	for _, u := range raw.Metadata {
+		if p := strings.TrimPrefix(u, "/1.0/projects/"); p != u && p != "default" {
+			names = append(names, p)
+		}
+	}
+	return names
+}
+
+func (c *lxdConn) ListStoragePools() ([]LXDPool, error) {
+	data, err := c.do("GET", "/1.0/storage-pools?recursion=1")
+	if err != nil {
+		return nil, fmt.Errorf("storage-pools: %w", err)
 	}
 
-	var raw []map[string]interface{}
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("parsing lxc storage list: %w", err)
+	var resp struct {
+		Metadata []struct {
+			Name   string `json:"name"`
+			Driver string `json:"driver"`
+			Config map[string]string `json:"config"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("parsing storage-pools: %w", err)
 	}
 
 	var pools []LXDPool
-	for _, entry := range raw {
-		name := jsonGet(entry, "name")
-		driver := jsonGet(entry, "driver")
-		if name == nil || driver == nil {
-			continue
-		}
+	for _, p := range resp.Metadata {
+		pool := LXDPool{Name: p.Name, Driver: p.Driver}
 
-		pool := LXDPool{
-			Name:   fmt.Sprint(name),
-			Driver: fmt.Sprint(driver),
-		}
-
-		// Total/available from config.
-		if config, ok := entry["config"].(map[string]interface{}); ok {
-			if v := jsonGet(config, "size"); v != nil {
-				if n, ok := parseNumber(fmt.Sprint(v)); ok {
-					pool.TotalBytes = int64(n)
-				}
+		// Get detailed resources from /1.0/storage-pools/<name>/resources
+		if resData, err := c.do("GET", "/1.0/storage-pools/"+p.Name+"/resources"); err == nil {
+			var resResp struct {
+				Metadata struct {
+					Space struct {
+						Total int64 `json:"total"`
+						Used  int64 `json:"used"`
+					} `json:"space"`
+				} `json:"metadata"`
 			}
-		}
-
-		// Also try resources.space.total / resources.space.used for usage.
-		if resources, ok := entry["resources"].(map[string]interface{}); ok {
-			if space, ok := resources["space"].(map[string]interface{}); ok {
-				if v := jsonGet(space, "total"); v != nil {
-					if n, ok := parseNumber(fmt.Sprint(v)); ok {
-						pool.TotalBytes = int64(n)
-					}
-				}
-				if v := jsonGet(space, "used"); v != nil {
-					if n, ok := parseNumber(fmt.Sprint(v)); ok {
-						pool.AvailBytes = pool.TotalBytes - int64(n)
-					}
-				}
+			if json.Unmarshal(resData, &resResp) == nil {
+				pool.TotalBytes = resResp.Metadata.Space.Total
+				pool.AvailBytes = pool.TotalBytes - resResp.Metadata.Space.Used
 			}
 		}
 
 		pools = append(pools, pool)
 	}
-
 	return pools, nil
 }
 
-func jsonGet(m map[string]interface{}, key string) interface{} {
-	parts := strings.Split(key, ".")
-	cur := interface{}(m)
-	for _, p := range parts {
-		if cm, ok := cur.(map[string]interface{}); ok {
-			cur = cm[p]
-		} else {
-			return nil
-		}
+func (c *lxdConn) do(method, path string) ([]byte, error) {
+	req, err := http.NewRequest(method, "http://unix"+path, nil)
+	if err != nil {
+		return nil, err
 	}
-	return cur
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
 }
 
 func parseNumber(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
-	// Strip known unit suffixes.
-	multiplier := 1.0
-	for _, suffix := range []struct{ unit string; mult float64 }{
+	mult := 1.0
+	for _, suf := range []struct {
+		unit string
+		m    float64
+	}{
 		{"GiB", 1024 * 1024 * 1024},
 		{"MiB", 1024 * 1024},
 		{"KiB", 1024},
@@ -157,13 +190,13 @@ func parseNumber(s string) (float64, bool) {
 		{"MB", 1000 * 1000},
 		{"KB", 1000},
 	} {
-		if strings.HasSuffix(s, suffix.unit) {
-			s = strings.TrimSuffix(s, suffix.unit)
-			multiplier = suffix.mult
+		if strings.HasSuffix(s, suf.unit) {
+			s = strings.TrimSuffix(s, suf.unit)
+			mult = suf.m
 			break
 		}
 	}
 	var n float64
 	_, err := fmt.Sscanf(strings.TrimSpace(s), "%f", &n)
-	return n * multiplier, err == nil
+	return n * mult, err == nil
 }
