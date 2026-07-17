@@ -108,10 +108,13 @@ func main() {
 				collectors = append(collectors, linux.NewLibvirtCollector(cfg.Host.ID, conn))
 			}
 		}
-		if cfg.Collectors != nil && cfg.Collectors.LXD != nil && !cfg.Collectors.LXD.IsEnabled() {
-			// LXD opt-out only when explicitly disabled.
-		} else {
-			logger.Info("LXD collector enabled (not yet implemented)")
+		if cfg.Collectors == nil || cfg.Collectors.LXD.IsEnabled() {
+			conn, err := linux.NewLXDConnection()
+			if err != nil {
+				logger.Warn("LXD collector disabled", "error", err)
+			} else {
+				collectors = append(collectors, linux.NewLXDCollector(cfg.Host.ID, conn))
+			}
 		}
 
 	case exporter.ModeESXi:
