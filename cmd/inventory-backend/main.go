@@ -134,6 +134,7 @@ func main() {
 			logger.Debug("background refresh complete",
 				"hosts", obsIndex.HostCount(), "resources", obsIndex.ResourceCount(),
 			)
+			handler.MarkRefreshed()
 		}
 	}()
 

@@ -47,6 +47,12 @@ func NewHandler(
 	}
 }
 
+// MarkRefreshed updates the cache timestamp after a background refresh.
+func (h *Handler) MarkRefreshed() {
+	h.rebuildSnapshot()
+	h.lastRefresh = time.Now()
+}
+
 // RegisterRoutes registers all HTTP routes on the given mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/inventory", h.handleInventory)
