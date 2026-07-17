@@ -142,3 +142,6 @@ jobs:
 
           upload "inventory-backend" bin/inventory-backend \
             "Processing backend — Prometheus queries, JSON API, web UI, Confluence publisher"
+
+          upload "inventory-exporter-deploy" config/deploy.sh \
+            "Self-contained deployment script — installs exporter + systemd units"

@@ -59,8 +59,21 @@ func main() {
 
 	flag.Parse()
 
+	configExample := flag.String("config-example", "", "Write Linux example config to PATH and exit")
+	configExampleEsxi := flag.String("config-example-esxi", "", "Write ESXi example config to PATH and exit")
+
+	flag.Parse()
+
 	if *versionFlag {
 		fmt.Printf("inventory-exporter %s (commit %s)\n", version.Version, version.Commit)
+		os.Exit(0)
+	}
+	if *configExample != "" {
+		writeConfig(*configExample, linuxExampleConfig)
+		os.Exit(0)
+	}
+	if *configExampleEsxi != "" {
+		writeConfig(*configExampleEsxi, esxiExampleConfig)
 		os.Exit(0)
 	}
 
@@ -183,6 +196,61 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+func writeConfig(path, content string) {
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	fmt.Printf("wrote %s\n", path)
+}
+
+const linuxExampleConfig = `# Inventory Exporter — Linux host configuration.
+# All fields are optional; defaults are shown below.
+#
+# Generate: inventory-exporter --config-example /etc/inventory-exporter/config.yaml
+
+mode: linux
+
+host:
+  id: ""          # defaults to system hostname
+  description: "" # free-text description
+  geo: general    # geographic grouping label
+
+collection:
+  interval: 15m   # how often to collect
+  timeout: 5m     # max collection duration
+  max_snapshot_age: 8h  # stop serving expired snapshots
+
+collectors:
+  libvirt:
+    enabled: true  # collect KVM domains and LVM pools
+  lxd:
+    enabled: true  # collect LXD containers and storage pools
+`
+
+const esxiExampleConfig = `# Inventory Exporter — ESXi collector configuration.
+# One process collects multiple standalone ESXi hosts.
+# Credentials must never be logged. Restrict file permissions.
+#
+# Generate: inventory-exporter --config-example-esxi /etc/inventory-exporter/esxi.yaml
+
+mode: esxi
+
+collection:
+  interval: 15m
+  timeout: 5m
+  max_snapshot_age: 8h
+
+targets:
+  - host_id: esxi-01
+    host_description: Primary ESXi host
+    geo: general
+    address: https://esxi-01.internal
+    username: inventory-reader
+    password: changeme
+    insecure_skip_verify: false
+`
 
 func defaultConfig() *exporter.Config {
 	hostname, _ := os.Hostname()
