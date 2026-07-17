@@ -14,7 +14,11 @@ services:
   exporter:
     image: ghcr.io/sshamanov/inventory-exporter:latest
     container_name: inventory-exporter
-    network_mode: host
+    command:
+      - "--config.file=/etc/inventory-exporter/esxi.yaml"
+      - "--web.listen-address=:9172"
     ports:
       - "9172:9172"
+    volumes:
+      - ./config/esxi.yaml:/etc/inventory-exporter/esxi.yaml:ro
     restart: unless-stopped
