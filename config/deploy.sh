@@ -112,7 +112,6 @@ Restart=always
 RestartSec=30
 MemoryMax=256M
 CPUQuota=50%
-TasksMax=20
 
 [Install]
 WantedBy=multi-user.target
