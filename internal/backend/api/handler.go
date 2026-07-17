@@ -122,9 +122,6 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if cacheTime.IsZero() {
 		cacheTime = time.Now().UTC()
 	}
-		if st.LastSuccessfulRefresh != nil {
-			cacheTime = *st.LastSuccessfulRefresh
-		}
 
 	status := map[string]interface{}{
 		"version":                   version.Version,
