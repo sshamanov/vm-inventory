@@ -22,8 +22,7 @@ func (c *lxcConn) Connect() error   { return nil }
 func (c *lxcConn) Disconnect() error { return nil }
 
 func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
-	cmd := exec.Command("lxc", "list", "--format", "json",
-		"-c", "n,s,config:image.description,config:limits.cpu,config:limits.memory,config:volatile.last_state.power")
+	cmd := exec.Command("lxc", "list", "--format", "json")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("lxc list: %w", err)
@@ -37,8 +36,8 @@ func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
 	var instances []LXDInstance
 	for _, entry := range raw {
 		// Only running containers.
-		state := jsonGet(entry, "state")
-		if state == nil || fmt.Sprint(state) != "Running" {
+		status := jsonGet(entry, "status")
+		if status == nil || fmt.Sprint(status) != "Running" {
 			continue
 		}
 
@@ -147,7 +146,24 @@ func jsonGet(m map[string]interface{}, key string) interface{} {
 }
 
 func parseNumber(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	// Strip known unit suffixes.
+	multiplier := 1.0
+	for _, suffix := range []struct{ unit string; mult float64 }{
+		{"GiB", 1024 * 1024 * 1024},
+		{"MiB", 1024 * 1024},
+		{"KiB", 1024},
+		{"GB", 1000 * 1000 * 1000},
+		{"MB", 1000 * 1000},
+		{"KB", 1000},
+	} {
+		if strings.HasSuffix(s, suffix.unit) {
+			s = strings.TrimSuffix(s, suffix.unit)
+			multiplier = suffix.mult
+			break
+		}
+	}
 	var n float64
 	_, err := fmt.Sscanf(strings.TrimSpace(s), "%f", &n)
-	return n, err == nil
+	return n * multiplier, err == nil
 }
