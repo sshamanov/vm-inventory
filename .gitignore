@@ -28,4 +28,4 @@ docker-compose.override.yml
 # State data
 /data/
 test-results/
-lxd-*.json
+lxd*.json
