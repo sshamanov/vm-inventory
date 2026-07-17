@@ -27,6 +27,7 @@ type Handler struct {
 	cachedSnapshot []byte
 	cachedEtag     string
 	cacheMu        sync.RWMutex
+	lastRefresh    time.Time
 	logger         *slog.Logger
 }
 
@@ -69,6 +70,7 @@ func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 
 	if snapshot == nil {
 		snapshot, etag = h.rebuildSnapshot()
+		h.lastRefresh = time.Now()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -110,7 +112,10 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to load state", "error", err)
 		st = &state.State{SchemaVersion: 1}
 	}
-		cacheTime := time.Now().UTC()
+		cacheTime := h.lastRefresh
+	if cacheTime.IsZero() {
+		cacheTime = time.Now().UTC()
+	}
 		if st.LastSuccessfulRefresh != nil {
 			cacheTime = *st.LastSuccessfulRefresh
 		}
@@ -183,6 +188,7 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Rebuild cached snapshot after refresh.
 	h.rebuildSnapshot()
+		h.lastRefresh = time.Now()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
