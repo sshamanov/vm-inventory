@@ -4,7 +4,6 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStartPre=/usr/local/bin/bin-update.sh inventory-exporter /usr/local/bin/inventory-exporter
 ExecStart=/usr/local/bin/inventory-exporter
 Restart=always
 RestartSec=30

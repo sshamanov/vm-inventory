@@ -1,0 +1,9 @@
+[Unit]
+Description=Inventory Exporter Self-Update Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bin-update.sh inventory-exporter /usr/local/bin/inventory-exporter
+ExecStartPost=/bin/systemctl try-restart inventory-exporter
