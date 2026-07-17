@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-push: run vet + tests before allowing push.
+set -e
+
+echo "=== go vet ==="
+docker run --rm --network host --tmpfs /root/.cache/go-build:exec \
+  -v "$(pwd)":/src -w /src golang:1.22-alpine \
+  go vet ./...
+
+echo "=== go test ==="
+docker run --rm --network host --tmpfs /root/.cache/go-build:exec \
+  -v "$(pwd)":/src -w /src golang:1.22-alpine \
+  go test ./... -count=1
+
+echo "=== OK ==="
