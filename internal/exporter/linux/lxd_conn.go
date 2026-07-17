@@ -3,24 +3,33 @@ package linux
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
 
 // lxcConn implements LXDClient via lxc CLI.
-type lxcConn struct{}
+type lxcConn struct{ bin string }
 
 func NewLXDConnection() (LXDClient, error) {
-	return &lxcConn{}, nil
+	for _, dir := range []string{"/snap/bin", "/usr/bin", "/usr/local/bin"} {
+		p := dir + "/lxc"
+		if _, err := os.Stat(p); err == nil {
+			return &lxcConn{bin: p}, nil
+		}
+	}
+	bin, err := exec.LookPath("lxc")
+	if err != nil {
+		return nil, fmt.Errorf("lxc not found: %w", err)
+	}
+	return &lxcConn{bin: bin}, nil
 }
 
 func (c *lxcConn) Connect() error   { return nil }
 func (c *lxcConn) Disconnect() error { return nil }
 
 func (c *lxcConn) lxc(args ...string) *exec.Cmd {
-	cmd := exec.Command("lxc", args...)
-	cmd.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"}
-	return cmd
+	return exec.Command(c.bin, args...)
 }
 
 func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
