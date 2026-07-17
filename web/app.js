@@ -219,24 +219,11 @@ function render(data) {
 
       // Storage pools.
       if (host.storage_pools && host.storage_pools.length) {
-        const lxdPools = host.storage_pools.filter(p => p.pool_type.startsWith('lxd-'));
-        const otherPools = host.storage_pools.filter(p => !p.pool_type.startsWith('lxd-'));
-        // LXD pools: combined usage bar.
-        if (lxdPools.length > 0) {
-          const total = lxdPools.reduce((s, p) => s + p.total_bytes, 0);
-          const avail = lxdPools.reduce((s, p) => s + (p.available_bytes || 0), 0);
-          const used = total - avail;
-          const pct = total > 0 ? Math.round((used / total) * 100) : 0;
-          geoHTML += `<div class="storage-section"><h4>LXD Storage</h4>`;
-          geoHTML += `<div class="bar-label">${lxdPools.length} pool(s): ${formatBytes(used)} used / ${formatBytes(total)} total</div>`;
-          geoHTML += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
-          geoHTML += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;
-        }
-        // KVM/ESXi pools: individual bars.
-        for (const pool of otherPools) {
+        for (const pool of host.storage_pools) {
           const used = pool.total_bytes - (pool.available_bytes || 0);
           const pct = pool.total_bytes > 0 ? Math.round((used / pool.total_bytes) * 100) : 0;
-          geoHTML += `<div class="storage-section"><h4>${esc(pool.pool_type)} Pool</h4>`;
+          const typeLabel = pool.pool_type.startsWith('lxd-') ? `LXD (${esc(pool.pool_type)})` : esc(pool.pool_type);
+          geoHTML += `<div class="storage-section"><h4>${typeLabel} Pool</h4>`;
           geoHTML += `<div class="bar-label">${esc(pool.pool_name)}: ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
           geoHTML += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
           geoHTML += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;

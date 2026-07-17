@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 )
 
 // lxcConn implements LXDClient via lxc CLI.
@@ -119,25 +120,12 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 	for _, e := range raw {
 		pool := LXDPool{Name: e.Name, Driver: e.Driver}
 
-		if v, ok := e.Config["size"]; ok {
-			if n, ok2 := parseCLI(v); ok2 {
-				pool.TotalBytes = int64(n)
-			}
-		}
-
-		infoOut, err := c.lxc("storage", "info", e.Name, "--format", "json").Output()
-		if err == nil {
-			var info struct {
-				Resources struct {
-					Space struct {
-						Total int64 `json:"total"`
-						Used  int64 `json:"used"`
-					} `json:"space"`
-				} `json:"resources"`
-			}
-			if json.Unmarshal(infoOut, &info) == nil {
-				pool.TotalBytes = info.Resources.Space.Total
-				pool.AvailBytes = pool.TotalBytes - info.Resources.Space.Used
+		// Get actual disk usage from the pool's backing source path.
+		if src, ok := e.Config["source"]; ok && src != "" {
+			var stat syscall.Statfs_t
+			if err := syscall.Statfs(src, &stat); err == nil {
+				pool.TotalBytes = int64(stat.Blocks) * int64(stat.Bsize)
+				pool.AvailBytes = int64(stat.Bavail) * int64(stat.Bsize)
 			}
 		}
 
