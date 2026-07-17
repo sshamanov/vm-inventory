@@ -111,6 +111,7 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 		Name   string            `json:"name"`
 		Driver string            `json:"driver"`
 		Config map[string]string `json:"config"`
+		UsedBy []string          `json:"used_by"`
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parsing lxc storage list: %w", err)
@@ -118,6 +119,9 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 
 	var pools []LXDPool
 	for _, e := range raw {
+			if len(e.UsedBy) == 0 {
+				continue
+			}
 		pool := LXDPool{Name: e.Name, Driver: e.Driver}
 
 		// Get actual disk usage from the pool's backing source path.
