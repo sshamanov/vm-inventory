@@ -34,6 +34,8 @@ else
 fi
 
 mkdir -p "$(dirname "${BIN}")"
-curl -fsSLo "${BIN}" "${URL}/f/${NAME}/raw"
-chmod +x "${BIN}"
+TMP="${BIN}.tmp.$$"
+curl -fsSLo "${TMP}" "${URL}/f/${NAME}/raw"
+chmod +x "${TMP}"
+mv "${TMP}" "${BIN}"
 echo "bin-update: ${NAME} updated to ${REMOTE}"
