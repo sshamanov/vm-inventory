@@ -55,6 +55,11 @@ func main() {
 					processMetricResult(obsIndex, result)
 				}
 			}
+			now := time.Now()
+			stateStore.Update(func(st *state.State) (*state.State, error) {
+				st.LastSuccessfulRefresh = &now
+				return st, nil
+			})
 			logger.Info("observation index rebuilt",
 				"hosts", obsIndex.HostCount(),
 				"resources", obsIndex.ResourceCount(),
