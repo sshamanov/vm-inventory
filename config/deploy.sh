@@ -49,12 +49,52 @@ chmod +x "$BIN_DIR/bin-update.sh"
 echo "--- Downloading inventory-exporter ---"
 "$BIN_DIR/bin-update.sh" inventory-exporter "$BIN_DIR/inventory-exporter"
 
-# 3. Generate example config if none exists.
+# 3. Write example configs (always overwritten for reference).
+echo "--- Writing example configs ---"
 mkdir -p "$CONF_DIR"
-if [ ! -f "$CONF_DIR/config.yaml" ]; then
-  echo "--- Generating default Linux config ---"
-  "$BIN_DIR/inventory-exporter" --config-example "$CONF_DIR/config.yaml"
-fi
+cat > "$CONF_DIR/config.yaml" << 'CONF_EOF'
+# Inventory Exporter — Linux host configuration.
+# All fields are optional; defaults are shown below.
+
+mode: linux
+
+host:
+  id: ""          # defaults to system hostname
+  description: "" # free-text description
+  geo: general    # geographic grouping label
+
+collection:
+  interval: 15m   # how often to collect
+  timeout: 5m     # max collection duration
+  max_snapshot_age: 8h  # stop serving expired snapshots
+
+collectors:
+  libvirt:
+    enabled: true  # collect KVM domains and LVM pools
+  lxd:
+    enabled: true  # collect LXD containers and storage pools
+CONF_EOF
+
+cat > "$CONF_DIR/esxi.yaml" << 'ESXI_EOF'
+# Inventory Exporter — ESXi collector configuration.
+# One process collects multiple standalone ESXi hosts.
+
+mode: esxi
+
+collection:
+  interval: 15m
+  timeout: 5m
+  max_snapshot_age: 8h
+
+targets:
+  - host_id: esxi-01
+    host_description: Primary ESXi host
+    geo: general
+    address: https://esxi-01.internal
+    username: inventory-reader
+    password: changeme
+    insecure_skip_verify: false
+ESXI_EOF
 
 # 4. Install systemd units.
 echo "--- Installing systemd units ---"
