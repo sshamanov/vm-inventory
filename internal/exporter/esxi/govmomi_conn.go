@@ -26,6 +26,9 @@ func (f *govmomiFactory) NewClient(ctx context.Context, target ESXITargetConfig)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ESXi URL: %w", err)
 	}
+	if u.Path == "" {
+		u.Path = "/sdk"
+	}
 	u.User = url.UserPassword(target.Username, target.Password)
 
 	vimClient, err := govmomi.NewClient(ctx, u, target.InsecureSkipVerify)
@@ -73,10 +76,10 @@ func (c *govmomiClient) HostSystem(ctx context.Context) (ESXiHostHardware, error
 
 	s := hw.Summary
 	hwInfo := ESXiHostHardware{
-		CPUModel:        s.Hardware.CpuModel,
-		CPUSockets:      int(s.Hardware.NumCpuPkgs),
-		CPUCores:        int(s.Hardware.NumCpuCores),
-		CPUThreads:      int(s.Hardware.NumCpuThreads),
+		CPUModel:         s.Hardware.CpuModel,
+		CPUSockets:       int(s.Hardware.NumCpuPkgs),
+		CPUCores:         int(s.Hardware.NumCpuCores),
+		CPUThreads:       int(s.Hardware.NumCpuThreads),
 		MemoryTotalBytes: int64(s.Hardware.MemorySize) << 20, // MB to bytes
 	}
 

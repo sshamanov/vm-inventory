@@ -59,7 +59,7 @@ type ESXITarget struct {
 	Address            string `yaml:"address"`
 	Username           string `yaml:"username"`
 	Password           string `yaml:"password"`
-	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
+	InsecureSkipVerify *bool  `yaml:"insecure_skip_verify"`
 }
 
 // IsEnabled returns true unless explicitly disabled.
@@ -149,6 +149,10 @@ func (c *Config) applyDefaults() {
 	for i := range c.Targets {
 		if c.Targets[i].Geo == "" {
 			c.Targets[i].Geo = shared.DefaultGeo
+		}
+		if c.Targets[i].InsecureSkipVerify == nil {
+			t := true
+			c.Targets[i].InsecureSkipVerify = &t
 		}
 	}
 }

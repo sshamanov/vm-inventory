@@ -25,6 +25,10 @@ Thumbs.db
 docker-compose.yml
 docker-compose.override.yml
 
+# Local config (contains credentials)
+config/esxi.yaml
+config/config.yaml
+
 # State data
 /data/
 test-results/

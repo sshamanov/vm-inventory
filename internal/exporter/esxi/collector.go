@@ -3,6 +3,7 @@ package esxi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"vm-inventory/internal/exporter"
@@ -106,14 +107,15 @@ func (c *ESXiCollector) Collect(ctx context.Context) (*exporter.CollectionResult
 	for _, target := range c.targets {
 		client, err := c.clientFact.NewClient(ctx, target)
 		if err != nil {
-			// Per-target failure isolation: log and continue (§8.3).
+			slog.Warn("esxi target connection failed, skipping", "host_id", target.HostID, "address", target.Address, "error", err)
 			continue
 		}
 
 		targetFamilies, err := c.collectTarget(ctx, client, target)
 		client.Logout(ctx)
 		if err != nil {
-			continue // per-target isolation
+			slog.Warn("esxi target collection failed, skipping", "host_id", target.HostID, "error", err)
+			continue
 		}
 		allFamilies = append(allFamilies, targetFamilies...)
 	}

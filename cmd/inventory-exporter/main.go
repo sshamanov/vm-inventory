@@ -128,7 +128,7 @@ func main() {
 						Address:            t.Address,
 						Username:           t.Username,
 						Password:           t.Password,
-						InsecureSkipVerify: t.InsecureSkipVerify,
+						InsecureSkipVerify: *t.InsecureSkipVerify,
 					}},
 					esxi.NewGovmomiFactory(),
 				))
@@ -265,7 +265,7 @@ targets:
     address: https://esxi-01.internal
     username: inventory-reader
     password: changeme
-    insecure_skip_verify: false
+    insecure_skip_verify: true  # defaults to true (ESXi uses self-signed certs)
 `
 
 func defaultConfig() *exporter.Config {
