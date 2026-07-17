@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"vm-inventory/internal/exporter"
+	"vm-inventory/internal/exporter/esxi"
 	"vm-inventory/internal/exporter/linux"
 	"vm-inventory/internal/version"
 )
@@ -57,7 +58,6 @@ func main() {
 	versionFlag := flag.Bool("version", false, "Show version and exit")
 	flag.BoolVar(versionFlag, "v", false, "Show version and exit")
 
-	flag.Parse()
 
 	configExample := flag.String("config-example", "", "Write Linux example config to PATH and exit")
 	configExampleEsxi := flag.String("config-example-esxi", "", "Write ESXi example config to PATH and exit")
@@ -118,8 +118,21 @@ func main() {
 		}
 
 	case exporter.ModeESXi:
-		logger.Info("ESXi mode not yet implemented")
-		os.Exit(1)
+		for _, t := range cfg.Targets {
+			collectors = append(collectors,
+				esxi.NewESXiCollector(
+					[]esxi.ESXITargetConfig{{
+						HostID:             t.HostID,
+						HostDescription:    t.HostDescription,
+						Geo:                t.Geo,
+						Address:            t.Address,
+						Username:           t.Username,
+						Password:           t.Password,
+						InsecureSkipVerify: t.InsecureSkipVerify,
+					}},
+					esxi.NewGovmomiFactory(),
+				))
+		}
 	}
 
 	if exporterHost == "" {
