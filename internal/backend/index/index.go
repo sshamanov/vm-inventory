@@ -86,6 +86,12 @@ func (h *HostObservation) MergeStoragePool(r prometheus.StoragePoolRecord) {
 			if r.AvailBytes > 0 {
 				h.StoragePools[i].AvailBytes = r.AvailBytes
 			}
+			if r.PoolName != "" {
+				h.StoragePools[i].PoolName = r.PoolName
+			}
+			if r.PoolType != "" {
+				h.StoragePools[i].PoolType = r.PoolType
+			}
 			return
 		}
 	}
