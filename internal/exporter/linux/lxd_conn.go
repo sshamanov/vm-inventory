@@ -29,12 +29,18 @@ func (c *lxcConn) Connect() error   { return nil }
 func (c *lxcConn) Disconnect() error { return nil }
 
 func (c *lxcConn) lxc(args ...string) *exec.Cmd {
-	return exec.Command(c.bin, args...)
+	cmd := exec.Command(c.bin, args...)
+	cmd.Env = []string{"HOME=/root", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"}
+	return cmd
 }
 
 func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
-	out, err := c.lxc("list", "--format", "json").Output()
+	cmd := c.lxc("list", "--format", "json")
+	out, err := cmd.Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("lxc list: %w (stderr: %s)", err, string(exitErr.Stderr))
+		}
 		return nil, fmt.Errorf("lxc list: %w", err)
 	}
 
