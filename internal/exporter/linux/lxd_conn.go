@@ -8,27 +8,20 @@ import (
 )
 
 // lxcConn implements LXDClient via lxc CLI.
-type lxcConn struct{ bin string }
-
-func (c *lxcConn) lxc(args ...string) *exec.Cmd {
-	cmd := exec.Command(c.bin, args...)
-	cmd.Env = nil // clean environment — systemd env can break lxc
-	return cmd
-}
-
-var lxcPaths = []string{"/snap/bin/lxc", "/usr/bin/lxc", "lxc"}
+type lxcConn struct{}
 
 func NewLXDConnection() (LXDClient, error) {
-	for _, p := range lxcPaths {
-		if _, err := exec.LookPath(p); err == nil {
-			return &lxcConn{bin: p}, nil
-		}
-	}
-	return nil, fmt.Errorf("lxc not found (tried snap, deb, and PATH)")
+	return &lxcConn{}, nil
 }
 
 func (c *lxcConn) Connect() error   { return nil }
 func (c *lxcConn) Disconnect() error { return nil }
+
+func (c *lxcConn) lxc(args ...string) *exec.Cmd {
+	cmd := exec.Command("lxc", args...)
+	cmd.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"}
+	return cmd
+}
 
 func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
 	out, err := c.lxc("list", "--format", "json").Output()
