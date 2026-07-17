@@ -11,7 +11,6 @@ RestartSec=30
 # Resource limits.
 MemoryMax=256M
 CPUQuota=50%
-TasksMax=512
 
 [Install]
 WantedBy=multi-user.target
