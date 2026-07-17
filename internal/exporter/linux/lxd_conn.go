@@ -111,21 +111,25 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 		Name   string            `json:"name"`
 		Driver string            `json:"driver"`
 		Config map[string]string `json:"config"`
-		UsedBy interface{}      `json:"used_by"`
+		
 	}
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, fmt.Errorf("parsing lxc storage list: %w", err)
 	}
 
 	var pools []LXDPool
+	seenSource := map[string]bool{}
 	for _, e := range raw {
-			if isZero(e.UsedBy) {
+		src := e.Config["source"]
+		if src != "" {
+			if seenSource[src] {
 				continue
 			}
+			seenSource[src] = true
+		}
 		pool := LXDPool{Name: e.Name, Driver: e.Driver}
 
-		// Get actual disk usage from the pool's backing source path.
-		if src, ok := e.Config["source"]; ok && src != "" {
+		if src != "" {
 			var stat syscall.Statfs_t
 			if err := syscall.Statfs(src, &stat); err == nil {
 				pool.TotalBytes = int64(stat.Blocks) * int64(stat.Bsize)
@@ -136,16 +140,6 @@ func (c *lxcConn) ListStoragePools() ([]LXDPool, error) {
 		pools = append(pools, pool)
 	}
 	return pools, nil
-}
-
-func isZero(v interface{}) bool {
-	if v == nil { return true }
-	switch x := v.(type) {
-	case float64: return x == 0
-	case string: return x == "" || x == "0"
-	case []interface{}: return len(x) == 0
-	}
-	return false
 }
 
 func parseCLI(s string) (float64, bool) {
