@@ -46,7 +46,7 @@ func (mg *multiGatherer) Gather() ([]*dto.MetricFamily, error) {
 		mfs, err := g.Gather()
 		if err != nil {
 			continue
-		}
+	}
 		all = append(all, mfs...)
 	}
 	return all, nil
@@ -85,7 +85,7 @@ func main() {
 			logger.Warn("failed to load config, using defaults", "error", err)
 		} else {
 			cfg = loaded
-		}
+	}
 	}
 
 	logger.Info("exporter starting", "mode", cfg.Mode)
@@ -107,7 +107,7 @@ func main() {
 			} else {
 				collectors = append(collectors, linux.NewLibvirtCollector(cfg.Host.ID, conn))
 			}
-		}
+	}
 		if cfg.Collectors == nil || cfg.Collectors.LXD.IsEnabled() {
 			conn, err := linux.NewLXDConnection()
 			if err != nil {
@@ -115,23 +115,25 @@ func main() {
 			} else {
 				collectors = append(collectors, linux.NewLXDCollector(cfg.Host.ID, conn))
 			}
-		}
+	}
 
 	case exporter.ModeESXi:
+		var esxiTargets []esxi.ESXITargetConfig
 		for _, t := range cfg.Targets {
+			esxiTargets = append(esxiTargets, esxi.ESXITargetConfig{
+				HostID:             t.HostID,
+				HostDescription:    t.HostDescription,
+				Geo:                t.Geo,
+				Address:            t.Address,
+				Username:           t.Username,
+				Password:           t.Password,
+				InsecureSkipVerify: *t.InsecureSkipVerify,
+			})
+	}
+		if len(esxiTargets) > 0 {
 			collectors = append(collectors,
-				esxi.NewESXiCollector(
-					[]esxi.ESXITargetConfig{{
-						HostID:             t.HostID,
-						HostDescription:    t.HostDescription,
-						Geo:                t.Geo,
-						Address:            t.Address,
-						Username:           t.Username,
-						Password:           t.Password,
-						InsecureSkipVerify: *t.InsecureSkipVerify,
-					}},
-					esxi.NewGovmomiFactory(),
-				))
+				esxi.NewESXiCollector(esxiTargets, esxi.NewGovmomiFactory()),
+			)
 		}
 	}
 
