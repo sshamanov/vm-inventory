@@ -116,6 +116,7 @@ type VMResource struct {
 	Name             string    `json:"name"`
 	Kind             string    `json:"kind"` // "libvirt_vm" or "esxi_vm"
 	Platform         string    `json:"platform"` // "KVM" or "ESXi"
+	Geo              string    `json:"geo"`
 	Description      string    `json:"description"`
 	GuestOS          string    `json:"guest_os"`
 	Architecture     string    `json:"architecture"`
@@ -137,6 +138,7 @@ type LXDContainer struct {
 	HostID           string    `json:"host_id"`
 	Name             string    `json:"name"`
 	Kind             string    `json:"kind"` // "lxd_container"
+	Geo              string    `json:"geo"`
 	Description      string    `json:"description"`
 	GuestOS          string    `json:"guest_os"`
 	Architecture     string    `json:"architecture"`

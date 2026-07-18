@@ -114,50 +114,55 @@ function render(data) {
   document.getElementById("no-results").hidden = true;
 
   const container = document.getElementById("geos");
-  const geoNav = document.getElementById("geo-nav");
   const hostNav = document.getElementById("host-nav");
+  const geoNav = document.getElementById("geo-nav");
+  if (geoNav) geoNav.innerHTML = "";
 
-  let geoHTML = "";
-  let geoNavHTML = "";
+  let html = "";
   let hostNavHTML = "";
 
+  // Flatten: collect all hosts, VMs, and LXD across geos.
+  const allHosts = [];
+  const allVMs = [];
+  const allLXDs = [];
   for (const geo of data.geos) {
-    // Apply search filter.
-    if (searchTerm && !geoMatches(geo, searchTerm)) continue;
+    if (geo.hosts) {
+      for (const h of geo.hosts) { h._geo = geo.name; allHosts.push(h); }
+    }
+    if (geo.virtual_machines) {
+      for (const vm of geo.virtual_machines) { vm.geo = vm.geo || geo.name; allVMs.push(vm); }
+    }
+    if (geo.lxd_containers) {
+      for (const ct of geo.lxd_containers) { ct.geo = ct.geo || geo.name; allLXDs.push(ct); }
+    }
+  }
 
-    // Sort hosts by ID.
-    geo.hosts.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
+  // Sort.
+  allHosts.sort((a, b) => (a._geo || "").localeCompare(b._geo || "") || (a.id || "").localeCompare(b.id || ""));
+  allVMs.sort(vmCompare);
+  allLXDs.sort(vmCompare);
 
-    // Sort VMs and LXD.
-    if (geo.virtual_machines) geo.virtual_machines.sort(vmCompare);
-    if (geo.lxd_containers) geo.lxd_containers.sort(vmCompare);
+  // Hosts.
+  for (const host of allHosts) {
+    if (searchTerm && !hostMatches(host, host._geo, searchTerm)) continue;
 
-    const anchor = slugify(geo.name);
-    geoNavHTML += `<a href="#${anchor}">${esc(geo.name)}</a>`;
+    const hostAnchor = slugify(host.id);
+    hostNavHTML += `<a href="#${hostAnchor}">${esc(host.id)}</a>`;
 
-    geoHTML += `<section class="geo-section" id="${anchor}" data-geo="${esc(geo.name)}">`;
-    geoHTML += `<h2>Geo: ${esc(geo.name)}</h2>`;
-
-    // Hosts.
-    for (const host of geo.hosts) {
-      if (searchTerm && !hostMatches(host, geo, searchTerm)) continue;
-
-      const hostAnchor = slugify(host.id);
-      hostNavHTML += `<a href="#${hostAnchor}">${esc(host.id)}</a>`;
-
-      const retainedClass = host.observation_state === "retained" ? " retained" : "";
-      geoHTML += `<div class="host-card${retainedClass}" id="${hostAnchor}" data-host="${esc(host.id)}">`;
-      geoHTML += `<h3>${esc(host.id)}</h3>`;
-      geoHTML += `<div class="host-meta">`;
-      geoHTML += `<span>Platform: ${esc(host.platform)}</span>`;
-      geoHTML += `<span>OS: ${esc(host.os_name)} ${esc(host.os_version)}</span>`;
-      if (host.hostname) geoHTML += `<span>Hostname: ${esc(host.hostname)}</span>`;
-      geoHTML += `</div>`;
+    const retainedClass = host.observation_state === "retained" ? " retained" : "";
+    html += `<div class="host-card${retainedClass}" id="${hostAnchor}" data-host="${esc(host.id)}">`;
+    html += `<h3>${esc(host.id)}</h3>`;
+    html += `<div class="host-meta">`;
+    html += `<span>Geo: ${esc(host._geo || host.geo || "—")}</span>`;
+    html += `<span>Platform: ${esc(host.platform)}</span>`;
+    html += `<span>OS: ${esc(host.os_name)} ${esc(host.os_version)}</span>`;
+    if (host.hostname) html += `<span>Hostname: ${esc(host.hostname)}</span>`;
+    html += `</div>`;
       if (host.ips && host.ips.length) {
-        geoHTML += `<div class="host-ips">IPs: ${formatIPs(host.ips)}</div>`;
+        html += `<div class="host-ips">IPs: ${formatIPs(host.ips)}</div>`;
       }
       if (host.last_seen) {
-        geoHTML += `<div class="last-seen">Last seen ${timeAgo(host.last_seen)}</div>`;
+        html += `<div class="last-seen">Last seen ${timeAgo(host.last_seen)}</div>`;
       }
 
       // CPU bar.
@@ -167,14 +172,14 @@ function render(data) {
         if (used != null && free != null) {
           const pctUsed = Math.round((used / host.cpu.threads) * 100);
           const pctFree = 100 - pctUsed;
-          geoHTML += `<div class="bar-container">`;
-          geoHTML += `<div class="bar-label">CPU: ${used.toFixed(1)} of ${host.cpu.threads} threads used (${host.cpu.model || "unknown"})</div>`;
-          geoHTML += `<div class="bar">`;
-          geoHTML += `<div class="bar-segment used" style="width:${pctUsed}%" aria-label="${pctUsed}% used">${pctUsed}%</div>`;
-          geoHTML += `<div class="bar-segment available" style="width:${pctFree}%" aria-label="${pctFree}% free">${pctFree}%</div>`;
-          geoHTML += `</div></div>`;
+          html += `<div class="bar-container">`;
+          html += `<div class="bar-label">CPU: ${used.toFixed(1)} of ${host.cpu.threads} threads used (${host.cpu.model || "unknown"})</div>`;
+          html += `<div class="bar">`;
+          html += `<div class="bar-segment used" style="width:${pctUsed}%" aria-label="${pctUsed}% used">${pctUsed}%</div>`;
+          html += `<div class="bar-segment available" style="width:${pctFree}%" aria-label="${pctFree}% free">${pctFree}%</div>`;
+          html += `</div></div>`;
         } else {
-          geoHTML += `<div class="bar-label">CPU: ${host.cpu.model || "unknown"} (${host.cpu.sockets}s × ${host.cpu.cores}c × ${host.cpu.threads}t)</div>`;
+          html += `<div class="bar-label">CPU: ${host.cpu.model || "unknown"} (${host.cpu.sockets}s × ${host.cpu.cores}c × ${host.cpu.threads}t)</div>`;
         }
       }
 
@@ -188,33 +193,33 @@ function render(data) {
           const usedPct = Math.round((used / total) * 100);
           const hpPct = hpFree ? Math.round((hpFree / total) * 100) : 0;
           const freePct = Math.round((normalFree / total) * 100);
-          geoHTML += `<div class="bar-container">`;
-          geoHTML += `<div class="bar-label">RAM: ${formatBytes(used)} used / ${formatBytes(normalFree)} free / ${formatBytes(total)} total</div>`;
-          geoHTML += `<div class="bar">`;
-          geoHTML += `<div class="bar-segment used" style="width:${usedPct}%" aria-label="Used ${usedPct}%">${usedPct}%</div>`;
-          if (hpPct > 0) geoHTML += `<div class="bar-segment hugepage-free" style="width:${hpPct}%" aria-label="Hugepage free ${hpPct}%">${hpPct}%</div>`;
-          geoHTML += `<div class="bar-segment normal-free" style="width:${freePct}%" aria-label="Free ${freePct}%">${freePct}%</div>`;
-          geoHTML += `</div></div>`;
+          html += `<div class="bar-container">`;
+          html += `<div class="bar-label">RAM: ${formatBytes(used)} used / ${formatBytes(normalFree)} free / ${formatBytes(total)} total</div>`;
+          html += `<div class="bar">`;
+          html += `<div class="bar-segment used" style="width:${usedPct}%" aria-label="Used ${usedPct}%">${usedPct}%</div>`;
+          if (hpPct > 0) html += `<div class="bar-segment hugepage-free" style="width:${hpPct}%" aria-label="Hugepage free ${hpPct}%">${hpPct}%</div>`;
+          html += `<div class="bar-segment normal-free" style="width:${freePct}%" aria-label="Free ${freePct}%">${freePct}%</div>`;
+          html += `</div></div>`;
         } else {
-          geoHTML += `<div class="bar-label">RAM: ${formatBytes(host.memory.total_bytes)} total</div>`;
+          html += `<div class="bar-label">RAM: ${formatBytes(host.memory.total_bytes)} total</div>`;
         }
       }
 
       // Disks.
       if (host.disks && host.disks.length) {
-        geoHTML += `<div class="disk-group">Disks: ${host.disks.map(d => formatBytes(d.size_bytes) + " × " + d.count).join(", ")}</div>`;
+        html += `<div class="disk-group">Disks: ${host.disks.map(d => formatBytes(d.size_bytes) + " × " + d.count).join(", ")}</div>`;
       }
 
       // Filesystems.
       if (host.filesystems && host.filesystems.length) {
-        geoHTML += `<div class="storage-section"><h4>Filesystems</h4>`;
+        html += `<div class="storage-section"><h4>Filesystems</h4>`;
         for (const fs of host.filesystems) {
           const mnts = fs.mountpoints ? fs.mountpoints.join(", ") : "—";
-          geoHTML += `<div>${esc(fs.filesystem_type)} (${mnts}): ${formatBytes(fs.total_bytes)} total`;
-          if (fs.available_bytes != null) geoHTML += `, ${formatBytes(fs.available_bytes)} free`;
-          geoHTML += `</div>`;
+          html += `<div>${esc(fs.filesystem_type)} (${mnts}): ${formatBytes(fs.total_bytes)} total`;
+          if (fs.available_bytes != null) html += `, ${formatBytes(fs.available_bytes)} free`;
+          html += `</div>`;
         }
-        geoHTML += `</div>`;
+        html += `</div>`;
       }
 
       // Storage pools.
@@ -223,72 +228,74 @@ function render(data) {
           const used = pool.total_bytes - (pool.available_bytes || 0);
           const pct = pool.total_bytes > 0 ? Math.round((used / pool.total_bytes) * 100) : 0;
           const typeLabel = pool.pool_type.startsWith('lxd-') ? `LXD (${esc(pool.pool_type)})` : esc(pool.pool_type);
-          geoHTML += `<div class="storage-section"><h4>${typeLabel} Pool</h4>`;
-          geoHTML += `<div class="bar-label">${esc(pool.pool_name)}: ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
-          geoHTML += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
-          geoHTML += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;
+          html += `<div class="storage-section"><h4>${typeLabel} Pool</h4>`;
+          html += `<div class="bar-label">${esc(pool.pool_name)}: ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
+          html += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
+          html += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;
         }
       }
 
-      geoHTML += `</div>`; // host-card
+      html += `</div>`; // host-card
     }
 
     // VM table.
-    if (geo.virtual_machines && geo.virtual_machines.length) {
-      geoHTML += `<table><caption>Virtual Machines</caption><thead><tr>`;
-      geoHTML += `<th><button class="sort-btn" onclick="setSort('host_id')">Host ${sortArrow('host_id')}</button></th>`;
-      geoHTML += `<th><button class="sort-btn" onclick="setSort('name')">Name ${sortArrow('name')}</button></th>`;
-      geoHTML += `<th><button class="sort-btn" onclick="setSort('platform')">Platform ${sortArrow('platform')}</button></th>`;
-      geoHTML += `<th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
-      geoHTML += `</tr></thead><tbody>`;
-      for (const vm of geo.virtual_machines) {
+    if (allVMs.length) {
+      html += `<table><caption>Virtual Machines</caption><thead><tr>`;
+      html += `<th><button class="sort-btn" onclick="setSort('host_id')">Host ${sortArrow('host_id')}</button></th>`;
+      html += `<th><button class="sort-btn" onclick="setSort('name')">Name ${sortArrow('name')}</button></th>`;
+      html += `<th><button class="sort-btn" onclick="setSort('platform')">Platform ${sortArrow('platform')}</button></th>`;
+      html += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const vm of allVMs) {
         if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
-        geoHTML += `<tr>`;
-        geoHTML += `<td>${esc(vm.host_id)}</td>`;
-        geoHTML += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
-        geoHTML += `<td>${esc(vm.platform)}</td>`;
+        html += `<tr>`;
+        html += `<td>${esc(vm.host_id)}</td>`;
+        html += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
+        html += `<td>${esc(vm.platform)}</td>`;
+        html += `<td>${esc(vm.geo || "—")}</td>`;
         const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
-        geoHTML += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
-        geoHTML += `<td>${esc(vm.description) || "—"}</td>`;
-        geoHTML += `<td>${esc(vm.guest_os) || "—"}</td>`;
-        geoHTML += `<td>${vm.cpu_count || "—"}</td>`;
-        geoHTML += `<td>${vm.memory_bytes ? formatBytes(vm.memory_bytes) : "—"}</td>`;
-        geoHTML += `<td>${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : "—"}</td>`;
-        geoHTML += `</tr>`;
+        html += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
+        html += `<td>${esc(vm.description) || "—"}</td>`;
+        html += `<td>${esc(vm.guest_os) || "—"}</td>`;
+        html += `<td>${vm.cpu_count || "—"}</td>`;
+        html += `<td>${vm.memory_bytes ? formatBytes(vm.memory_bytes) : "—"}</td>`;
+        html += `<td>${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : "—"}</td>`;
+        html += `</tr>`;
       }
-      geoHTML += `</tbody></table>`;
+      html += `</tbody></table>`;
     }
 
     // LXD table.
-    if (geo.lxd_containers && geo.lxd_containers.length) {
-      geoHTML += `<table><caption>LXD Containers</caption><thead><tr>`;
-      geoHTML += `<th>Host</th><th>Name</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
-      geoHTML += `</tr></thead><tbody>`;
-      for (const ct of geo.lxd_containers) {
+    if (allLXDs.length) {
+      html += `<table><caption>LXD Containers</caption><thead><tr>`;
+      html += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const ct of allLXDs) {
         if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
         const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
-        geoHTML += `<tr>`;
-        geoHTML += `<td>${esc(ct.host_id)}</td>`;
-        geoHTML += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
-        geoHTML += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
-        geoHTML += `<td>${esc(ct.description) || "—"}</td>`;
-        geoHTML += `<td>${esc(ct.guest_os) || "—"}</td>`;
-        geoHTML += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
-        geoHTML += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"} (${esc(ct.capacity_source_ram)})</td>`;
-        geoHTML += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"} (${esc(ct.capacity_source_disk)})</td>`;
-        geoHTML += `</tr>`;
+        html += `<tr>`;
+        html += `<td>${esc(ct.host_id)}</td>`;
+        html += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
+        html += `<td>${esc(ct.geo || "—")}</td>`;
+        html += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
+        html += `<td>${esc(ct.description) || "—"}</td>`;
+        html += `<td>${esc(ct.guest_os) || "—"}</td>`;
+        html += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
+        html += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"} (${esc(ct.capacity_source_ram)})</td>`;
+        html += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"} (${esc(ct.capacity_source_disk)})</td>`;
+        html += `</tr>`;
       }
-      geoHTML += `</tbody></table>`;
+      html += `</tbody></table>`;
     }
 
-    geoHTML += `</section>`; // geo-section
+    // flattened — no geo sections
   }
 
-  container.innerHTML = geoHTML;
-  geoNav.innerHTML = geoNavHTML;
+  container.innerHTML = html;
+  // geo-nav removed
   hostNav.innerHTML = hostNavHTML;
 
-  if (searchTerm && geoHTML === "") {
+  if (searchTerm && html === "") {
     document.getElementById("no-results").hidden = false;
   }
 }
@@ -301,9 +308,9 @@ function onSearch(e) {
 }
 
 function geoMatches(geo, term) {
-  if (geo.name.toLowerCase().includes(term)) return true;
-  for (const host of geo.hosts) {
-    if (hostMatches(host, geo, term)) return true;
+  // Flattened: check all hosts and resources regardless of geo.
+  for (const host of geo.hosts || []) {
+    if (hostMatches(host, geo.name, term)) return true;
   }
   for (const vm of geo.virtual_machines || []) {
     if (resourceMatches(vm, "vm", term)) return true;
