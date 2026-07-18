@@ -124,6 +124,10 @@ func (c *govmomiClient) Datastores(ctx context.Context) ([]ESXiDatastore, error)
 			continue
 		}
 		s := info.Summary
+			// Only collect local VMFS datastores; skip NFS, vSAN, VVol, etc.
+			if s.Type != "VMFS" {
+				continue
+			}
 		datastores = append(datastores, ESXiDatastore{
 			Name:       s.Name,
 			Type:       s.Type,
