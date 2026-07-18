@@ -243,12 +243,12 @@ function render(data) {
       geoHTML += `</tr></thead><tbody>`;
       for (const vm of geo.virtual_machines) {
         if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
-        const ips = formatIPs(vm.ips);
         geoHTML += `<tr>`;
         geoHTML += `<td>${esc(vm.host_id)}</td>`;
         geoHTML += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
         geoHTML += `<td>${esc(vm.platform)}</td>`;
-        geoHTML += `<td class="mono">${esc(ips)}</td>`;
+        const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
+        geoHTML += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
         geoHTML += `<td>${esc(vm.description) || "—"}</td>`;
         geoHTML += `<td>${esc(vm.guest_os) || "—"}</td>`;
         geoHTML += `<td>${vm.cpu_count || "—"}</td>`;
@@ -266,11 +266,11 @@ function render(data) {
       geoHTML += `</tr></thead><tbody>`;
       for (const ct of geo.lxd_containers) {
         if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
-        const ips = formatIPs(ct.ips);
+        const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
         geoHTML += `<tr>`;
         geoHTML += `<td>${esc(ct.host_id)}</td>`;
         geoHTML += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
-        geoHTML += `<td class="mono">${esc(ips)}</td>`;
+        geoHTML += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
         geoHTML += `<td>${esc(ct.description) || "—"}</td>`;
         geoHTML += `<td>${esc(ct.guest_os) || "—"}</td>`;
         geoHTML += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
@@ -360,8 +360,9 @@ function timeAgo(ts) {
 
 function formatIPs(ips) {
   if (!ips || !ips.length) return "—";
-  if (ips.length <= 2) return ips.map(esc).join(", ");
-  return ips.slice(0, 2).map(esc).join(", ") + ", …";
+  const sorted = [...ips].sort();
+  if (sorted.length <= 2) return sorted.map(esc).join(", ");
+  return sorted.slice(0, 2).map(esc).join(", ") + ", …";
 }
 
 function formatBytes(bytes) {
