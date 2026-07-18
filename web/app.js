@@ -158,137 +158,134 @@ function render(data) {
     html += `<span>OS: ${esc(host.os_name)} ${esc(host.os_version)}</span>`;
     if (host.hostname) html += `<span>Hostname: ${esc(host.hostname)}</span>`;
     html += `</div>`;
-      if (host.ips && host.ips.length) {
-        html += `<div class="host-ips">IPs: ${formatIPs(host.ips)}</div>`;
-      }
-      if (host.last_seen) {
-        html += `<div class="last-seen">Last seen ${timeAgo(host.last_seen)}</div>`;
-      }
+    if (host.ips && host.ips.length) {
+      html += `<div class="host-ips">IPs: ${formatIPs(host.ips)}</div>`;
+    }
+    if (host.last_seen) {
+      html += `<div class="last-seen">Last seen ${timeAgo(host.last_seen)}</div>`;
+    }
 
-      // CPU bar.
-      if (host.cpu && host.cpu.threads) {
-        const used = host.cpu.used_thread_equivalents;
-        const free = host.cpu.free_thread_equivalents;
-        if (used != null && free != null) {
-          const pctUsed = Math.round((used / host.cpu.threads) * 100);
-          const pctFree = 100 - pctUsed;
-          html += `<div class="bar-container">`;
-          html += `<div class="bar-label">CPU: ${used.toFixed(1)} of ${host.cpu.threads} threads used (${host.cpu.model || "unknown"})</div>`;
-          html += `<div class="bar">`;
-          html += `<div class="bar-segment used" style="width:${pctUsed}%" aria-label="${pctUsed}% used">${pctUsed}%</div>`;
-          html += `<div class="bar-segment available" style="width:${pctFree}%" aria-label="${pctFree}% free">${pctFree}%</div>`;
-          html += `</div></div>`;
-        } else {
-          html += `<div class="bar-label">CPU: ${host.cpu.model || "unknown"} (${host.cpu.sockets}s × ${host.cpu.cores}c × ${host.cpu.threads}t)</div>`;
-        }
+    // CPU bar.
+    if (host.cpu && host.cpu.threads) {
+      const used = host.cpu.used_thread_equivalents;
+      const free = host.cpu.free_thread_equivalents;
+      if (used != null && free != null) {
+        const pctUsed = Math.round((used / host.cpu.threads) * 100);
+        const pctFree = 100 - pctUsed;
+        html += `<div class="bar-container">`;
+        html += `<div class="bar-label">CPU: ${used.toFixed(1)} of ${host.cpu.threads} threads used (${host.cpu.model || "unknown"})</div>`;
+        html += `<div class="bar">`;
+        html += `<div class="bar-segment used" style="width:${pctUsed}%" aria-label="${pctUsed}% used">${pctUsed}%</div>`;
+        html += `<div class="bar-segment available" style="width:${pctFree}%" aria-label="${pctFree}% free">${pctFree}%</div>`;
+        html += `</div></div>`;
+      } else {
+        html += `<div class="bar-label">CPU: ${host.cpu.model || "unknown"} (${host.cpu.sockets}s × ${host.cpu.cores}c × ${host.cpu.threads}t)</div>`;
       }
+    }
 
-      // RAM bar.
-      if (host.memory && host.memory.total_bytes) {
-        const used = host.memory.used_bytes;
-        const hpFree = host.memory.hugepages_free_bytes;
-        const normalFree = host.memory.available_bytes;
-        if (used != null && normalFree != null) {
-          const total = host.memory.total_bytes;
-          const usedPct = Math.round((used / total) * 100);
-          const hpPct = hpFree ? Math.round((hpFree / total) * 100) : 0;
-          const freePct = Math.round((normalFree / total) * 100);
-          html += `<div class="bar-container">`;
-          html += `<div class="bar-label">RAM: ${formatBytes(used)} used / ${formatBytes(normalFree)} free / ${formatBytes(total)} total</div>`;
-          html += `<div class="bar">`;
-          html += `<div class="bar-segment used" style="width:${usedPct}%" aria-label="Used ${usedPct}%">${usedPct}%</div>`;
-          if (hpPct > 0) html += `<div class="bar-segment hugepage-free" style="width:${hpPct}%" aria-label="Hugepage free ${hpPct}%">${hpPct}%</div>`;
-          html += `<div class="bar-segment normal-free" style="width:${freePct}%" aria-label="Free ${freePct}%">${freePct}%</div>`;
-          html += `</div></div>`;
-        } else {
-          html += `<div class="bar-label">RAM: ${formatBytes(host.memory.total_bytes)} total</div>`;
-        }
+    // RAM bar.
+    if (host.memory && host.memory.total_bytes) {
+      const used = host.memory.used_bytes;
+      const hpFree = host.memory.hugepages_free_bytes;
+      const normalFree = host.memory.available_bytes;
+      if (used != null && normalFree != null) {
+        const total = host.memory.total_bytes;
+        const usedPct = Math.round((used / total) * 100);
+        const hpPct = hpFree ? Math.round((hpFree / total) * 100) : 0;
+        const freePct = Math.round((normalFree / total) * 100);
+        html += `<div class="bar-container">`;
+        html += `<div class="bar-label">RAM: ${formatBytes(used)} used / ${formatBytes(normalFree)} free / ${formatBytes(total)} total</div>`;
+        html += `<div class="bar">`;
+        html += `<div class="bar-segment used" style="width:${usedPct}%" aria-label="Used ${usedPct}%">${usedPct}%</div>`;
+        if (hpPct > 0) html += `<div class="bar-segment hugepage-free" style="width:${hpPct}%" aria-label="Hugepage free ${hpPct}%">${hpPct}%</div>`;
+        html += `<div class="bar-segment normal-free" style="width:${freePct}%" aria-label="Free ${freePct}%">${freePct}%</div>`;
+        html += `</div></div>`;
+      } else {
+        html += `<div class="bar-label">RAM: ${formatBytes(host.memory.total_bytes)} total</div>`;
       }
+    }
 
-      // Disks.
-      if (host.disks && host.disks.length) {
-        html += `<div class="disk-group">Disks: ${host.disks.map(d => formatBytes(d.size_bytes) + " × " + d.count).join(", ")}</div>`;
-      }
+    // Disks.
+    if (host.disks && host.disks.length) {
+      html += `<div class="disk-group">Disks: ${host.disks.map(d => formatBytes(d.size_bytes) + " × " + d.count).join(", ")}</div>`;
+    }
 
-      // Filesystems.
-      if (host.filesystems && host.filesystems.length) {
-        html += `<div class="storage-section"><h4>Filesystems</h4>`;
-        for (const fs of host.filesystems) {
-          const mnts = fs.mountpoints ? fs.mountpoints.join(", ") : "—";
-          html += `<div>${esc(fs.filesystem_type)} (${mnts}): ${formatBytes(fs.total_bytes)} total`;
-          if (fs.available_bytes != null) html += `, ${formatBytes(fs.available_bytes)} free`;
-          html += `</div>`;
-        }
+    // Filesystems.
+    if (host.filesystems && host.filesystems.length) {
+      html += `<div class="storage-section"><h4>Filesystems</h4>`;
+      for (const fs of host.filesystems) {
+        const mnts = fs.mountpoints ? fs.mountpoints.join(", ") : "—";
+        html += `<div>${esc(fs.filesystem_type)} (${mnts}): ${formatBytes(fs.total_bytes)} total`;
+        if (fs.available_bytes != null) html += `, ${formatBytes(fs.available_bytes)} free`;
         html += `</div>`;
       }
-
-      // Storage pools.
-      if (host.storage_pools && host.storage_pools.length) {
-        for (const pool of host.storage_pools) {
-          const used = pool.total_bytes - (pool.available_bytes || 0);
-          const pct = pool.total_bytes > 0 ? Math.round((used / pool.total_bytes) * 100) : 0;
-          const typeLabel = pool.pool_type.startsWith('lxd-') ? `LXD (${esc(pool.pool_type)})` : esc(pool.pool_type);
-          html += `<div class="storage-section"><h4>${typeLabel} Pool</h4>`;
-          html += `<div class="bar-label">${esc(pool.pool_name)}: ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
-          html += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
-          html += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;
-        }
-      }
-
-      html += `</div>`; // host-card
+      html += `</div>`;
     }
 
-    // VM table.
-    if (allVMs.length) {
-      html += `<table><caption>Virtual Machines</caption><thead><tr>`;
-      html += `<th><button class="sort-btn" onclick="setSort('host_id')">Host ${sortArrow('host_id')}</button></th>`;
-      html += `<th><button class="sort-btn" onclick="setSort('name')">Name ${sortArrow('name')}</button></th>`;
-      html += `<th><button class="sort-btn" onclick="setSort('platform')">Platform ${sortArrow('platform')}</button></th>`;
-      html += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
-      html += `</tr></thead><tbody>`;
-      for (const vm of allVMs) {
-        if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
-        html += `<tr>`;
-        html += `<td>${esc(vm.host_id)}</td>`;
-        html += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
-        html += `<td>${esc(vm.platform)}</td>`;
-        html += `<td>${esc(vm.geo || "—")}</td>`;
-        const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
-        html += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
-        html += `<td>${esc(vm.description) || "—"}</td>`;
-        html += `<td>${esc(vm.guest_os) || "—"}</td>`;
-        html += `<td>${vm.cpu_count || "—"}</td>`;
-        html += `<td>${vm.memory_bytes ? formatBytes(vm.memory_bytes) : "—"}</td>`;
-        html += `<td>${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : "—"}</td>`;
-        html += `</tr>`;
+    // Storage pools.
+    if (host.storage_pools && host.storage_pools.length) {
+      for (const pool of host.storage_pools) {
+        const used = pool.total_bytes - (pool.available_bytes || 0);
+        const pct = pool.total_bytes > 0 ? Math.round((used / pool.total_bytes) * 100) : 0;
+        const typeLabel = pool.pool_type.startsWith('lxd-') ? `LXD (${esc(pool.pool_type)})` : esc(pool.pool_type);
+        html += `<div class="storage-section"><h4>${typeLabel} Pool</h4>`;
+        html += `<div class="bar-label">${esc(pool.pool_name)}: ${formatBytes(used)} used / ${formatBytes(pool.total_bytes)} total</div>`;
+        html += `<div class="bar"><div class="bar-segment used" style="width:${pct}%">${pct}%</div>`;
+        html += `<div class="bar-segment normal-free" style="width:${100-pct}%">${100-pct}%</div></div></div>`;
       }
-      html += `</tbody></table>`;
     }
 
-    // LXD table.
-    if (allLXDs.length) {
-      html += `<table><caption>LXD Containers</caption><thead><tr>`;
-      html += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
-      html += `</tr></thead><tbody>`;
-      for (const ct of allLXDs) {
-        if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
-        const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
-        html += `<tr>`;
-        html += `<td>${esc(ct.host_id)}</td>`;
-        html += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
-        html += `<td>${esc(ct.geo || "—")}</td>`;
-        html += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
-        html += `<td>${esc(ct.description) || "—"}</td>`;
-        html += `<td>${esc(ct.guest_os) || "—"}</td>`;
-        html += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
-        html += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"} (${esc(ct.capacity_source_ram)})</td>`;
-        html += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"} (${esc(ct.capacity_source_disk)})</td>`;
-        html += `</tr>`;
-      }
-      html += `</tbody></table>`;
-    }
+    html += `</div>`; // host-card
+  }
 
-    // flattened — no geo sections
+  // VM table.
+  if (allVMs.length) {
+    html += `<table><caption>Virtual Machines</caption><thead><tr>`;
+    html += `<th><button class="sort-btn" onclick="setSort('host_id')">Host ${sortArrow('host_id')}</button></th>`;
+    html += `<th><button class="sort-btn" onclick="setSort('name')">Name ${sortArrow('name')}</button></th>`;
+    html += `<th><button class="sort-btn" onclick="setSort('platform')">Platform ${sortArrow('platform')}</button></th>`;
+    html += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
+    html += `</tr></thead><tbody>`;
+    for (const vm of allVMs) {
+      if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
+      html += `<tr>`;
+      html += `<td>${esc(vm.host_id)}</td>`;
+      html += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
+      html += `<td>${esc(vm.platform)}</td>`;
+      html += `<td>${esc(vm.geo || "—")}</td>`;
+      const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
+      html += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
+      html += `<td>${esc(vm.description) || "—"}</td>`;
+      html += `<td>${esc(vm.guest_os) || "—"}</td>`;
+      html += `<td>${vm.cpu_count || "—"}</td>`;
+      html += `<td>${vm.memory_bytes ? formatBytes(vm.memory_bytes) : "—"}</td>`;
+      html += `<td>${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : "—"}</td>`;
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  // LXD table.
+  if (allLXDs.length) {
+    html += `<table><caption>LXD Containers</caption><thead><tr>`;
+    html += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
+    html += `</tr></thead><tbody>`;
+    for (const ct of allLXDs) {
+      if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
+      const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
+      html += `<tr>`;
+      html += `<td>${esc(ct.host_id)}</td>`;
+      html += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
+      html += `<td>${esc(ct.geo || "—")}</td>`;
+      html += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
+      html += `<td>${esc(ct.description) || "—"}</td>`;
+      html += `<td>${esc(ct.guest_os) || "—"}</td>`;
+      html += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
+      html += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"} (${esc(ct.capacity_source_ram)})</td>`;
+      html += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"} (${esc(ct.capacity_source_disk)})</td>`;
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
   }
 
   container.innerHTML = html;
@@ -305,20 +302,6 @@ function render(data) {
 function onSearch(e) {
   searchTerm = e.target.value.trim().toLowerCase();
   if (currentData) render(currentData);
-}
-
-function geoMatches(geo, term) {
-  // Flattened: check all hosts and resources regardless of geo.
-  for (const host of geo.hosts || []) {
-    if (hostMatches(host, geo.name, term)) return true;
-  }
-  for (const vm of geo.virtual_machines || []) {
-    if (resourceMatches(vm, "vm", term)) return true;
-  }
-  for (const ct of geo.lxd_containers || []) {
-    if (resourceMatches(ct, "lxd", term)) return true;
-  }
-  return false;
 }
 
 function hostMatches(host, geo, term) {
