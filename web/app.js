@@ -154,7 +154,7 @@ function render(data) {
       if (host.hostname) geoHTML += `<span>Hostname: ${esc(host.hostname)}</span>`;
       geoHTML += `</div>`;
       if (host.ips && host.ips.length) {
-        geoHTML += `<div class="host-ips">IPs: ${host.ips.map(esc).join(", ")}</div>`;
+        geoHTML += `<div class="host-ips">IPs: ${formatIPs(host.ips)}</div>`;
       }
       if (host.last_seen) {
         geoHTML += `<div class="last-seen">Last seen ${timeAgo(host.last_seen)}</div>`;
@@ -243,7 +243,7 @@ function render(data) {
       geoHTML += `</tr></thead><tbody>`;
       for (const vm of geo.virtual_machines) {
         if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
-        const ips = (vm.ips && vm.ips.length) ? vm.ips.join(", ") : "—";
+        const ips = formatIPs(vm.ips);
         geoHTML += `<tr>`;
         geoHTML += `<td>${esc(vm.host_id)}</td>`;
         geoHTML += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
@@ -266,7 +266,7 @@ function render(data) {
       geoHTML += `</tr></thead><tbody>`;
       for (const ct of geo.lxd_containers) {
         if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
-        const ips = (ct.ips && ct.ips.length) ? ct.ips.join(", ") : "—";
+        const ips = formatIPs(ct.ips);
         geoHTML += `<tr>`;
         geoHTML += `<td>${esc(ct.host_id)}</td>`;
         geoHTML += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
@@ -356,6 +356,12 @@ function timeAgo(ts) {
   if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.round(diff / 3600)}h ago`;
   return `${Math.round(diff / 86400)}d ago`;
+}
+
+function formatIPs(ips) {
+  if (!ips || !ips.length) return "—";
+  if (ips.length <= 2) return ips.map(esc).join(", ");
+  return ips.slice(0, 2).map(esc).join(", ") + ", …";
 }
 
 function formatBytes(bytes) {
