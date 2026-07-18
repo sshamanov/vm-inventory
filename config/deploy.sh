@@ -107,7 +107,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/inventory-exporter --config.file=/etc/inventory-exporter/config.yaml
+ExecStart=/usr/local/bin/inventory-exporter -config.file=/etc/inventory-exporter/config.yaml
 # For ESXi mode, change config.file to /etc/inventory-exporter/esxi.yaml
 # and add: --web.listen-address=:9172
 Restart=always

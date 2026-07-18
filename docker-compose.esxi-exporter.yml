@@ -15,8 +15,8 @@ services:
     image: ghcr.io/sshamanov/inventory-exporter:latest
     container_name: inventory-exporter
     command:
-      - "--config.file=/etc/inventory-exporter/esxi.yaml"
-      - "--web.listen-address=:9172"
+      - "-config.file=/etc/inventory-exporter/esxi.yaml"
+      - "-web.listen-address=:9172"
     ports:
       - "9172:9172"
     volumes:
