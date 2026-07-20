@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"vm-inventory/internal/exporter"
 	"vm-inventory/internal/shared"
@@ -203,10 +204,20 @@ func parseMounts() ([]mountEntry, error) {
 			continue
 		}
 
+		var stat syscall.Statfs_t
+		totalBytes := int64(0)
+		availBytes := int64(0)
+		if err := syscall.Statfs(mountpoint, &stat); err == nil {
+			totalBytes = int64(stat.Blocks) * stat.Bsize
+			availBytes = int64(stat.Bavail) * stat.Bsize
+		}
+
 		mounts = append(mounts, mountEntry{
 			device:     device,
 			mountpoint: mountpoint,
 			fsType:     fsType,
+			totalBytes: totalBytes,
+			availBytes: availBytes,
 		})
 	}
 	return mounts, scanner.Err()

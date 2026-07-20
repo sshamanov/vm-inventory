@@ -14,6 +14,6 @@ ENV LISTEN_ADDR=:8080
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD wget -qO- http://localhost:8080/api/status || exit 1
+  CMD wget -qO- http://localhost${LISTEN_ADDR:-:8080}/api/status || exit 1
 
 ENTRYPOINT ["/usr/bin/inventory-backend"]
