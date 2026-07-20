@@ -33,3 +33,4 @@ config/config.yaml
 /data/
 test-results/
 samples/lxd*.json
+.env

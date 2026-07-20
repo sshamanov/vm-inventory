@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -30,20 +31,20 @@ const (
 
 // Publisher orchestrates Confluence page publication.
 type Publisher struct {
-	client     *http.Client
+	client        *http.Client
 	confluenceURL string
-	username   string
-	password   string
-	spaceKey   string
-	idx        *index.ObservationIndex
-	normalizer *normalizer.Normalizer
-	stateStore *state.Store
-	logger     *slog.Logger
+	token         string // Personal Access Token for Bearer auth
+	spaceKey      string
+	idx           *index.ObservationIndex
+	normalizer    *normalizer.Normalizer
+	stateStore    *state.Store
+	logger        *slog.Logger
 }
 
 // NewPublisher creates a new Confluence publisher.
+// token is a Confluence Personal Access Token used as Bearer auth.
 func NewPublisher(
-	confluenceURL, username, password, spaceKey string,
+	confluenceURL, token, spaceKey string,
 	idx *index.ObservationIndex,
 	stateStore *state.Store,
 	logger *slog.Logger,
@@ -51,8 +52,7 @@ func NewPublisher(
 	return &Publisher{
 		client:        &http.Client{Timeout: 30 * time.Second},
 		confluenceURL: strings.TrimRight(confluenceURL, "/"),
-		username:      username,
-		password:      password,
+		token:         token,
 		spaceKey:      spaceKey,
 		idx:           idx,
 		normalizer:    normalizer.New(idx),
@@ -81,7 +81,7 @@ func (p *Publisher) Publish(ctx context.Context) PublishResult {
 	body := renderStorageFormat(snapshot)
 
 	// Publish to Confluence.
-	if err := p.upsertPage(ctx, "VM Inventory", body); err != nil {
+	if err := p.upsertPage(ctx, "VM Directory", body); err != nil {
 		p.logger.Error("confluence publication failed", "error", err)
 		return Failed
 	}
@@ -139,7 +139,7 @@ func computeHash(snapshot *shared.NormalizedInventory) string {
 // renderStorageFormat builds Confluence Storage Format HTML (§20).
 func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	var buf bytes.Buffer
-	buf.WriteString(`<h1>VM Inventory</h1>`)
+	buf.WriteString(`<h1>VM Directory</h1>`)
 	buf.WriteString(`<p>Active inventory includes resources observed during the eight hours before publication.</p>`)
 	buf.WriteString(`<ac:structured-macro ac:name="toc"/>`)
 
@@ -176,10 +176,10 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 func (p *Publisher) upsertPage(ctx context.Context, title, body string) error {
 	// Confluence REST API: GET page by title, then PUT update or POST create.
 	url := fmt.Sprintf("%s/rest/api/content?title=%s&spaceKey=%s&expand=version",
-		p.confluenceURL, title, p.spaceKey)
+		p.confluenceURL, url.QueryEscape(title), url.QueryEscape(p.spaceKey))
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	req.SetBasicAuth(p.username, p.password)
+	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := p.client.Do(req)
@@ -215,7 +215,7 @@ func (p *Publisher) upsertPage(ctx context.Context, title, body string) error {
 			}
 			pl, _ := json.Marshal(payload)
 			req, _ := http.NewRequestWithContext(ctx, http.MethodPut, updateURL, bytes.NewReader(pl))
-			req.SetBasicAuth(p.username, p.password)
+			req.Header.Set("Authorization", "Bearer "+p.token)
 			req.Header.Set("Content-Type", "application/json")
 			resp, err = p.client.Do(req)
 			if err != nil {
@@ -245,7 +245,7 @@ func (p *Publisher) upsertPage(ctx context.Context, title, body string) error {
 	}
 	pl, _ := json.Marshal(payload)
 	req, _ = http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(pl))
-	req.SetBasicAuth(p.username, p.password)
+	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err = p.client.Do(req)
 	if err != nil {

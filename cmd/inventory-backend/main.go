@@ -68,9 +68,9 @@ func main() {
 	}
 
 	var pub *confluence.Publisher
-	if cfg.ConfluenceURL != "" && cfg.ConfluenceSpaceKey != "" {
+	if cfg.ConfluenceURL != "" && cfg.ConfluenceToken != "" && cfg.ConfluenceSpaceKey != "" {
 		pub = confluence.NewPublisher(
-			cfg.ConfluenceURL, cfg.ConfluenceUsername, cfg.ConfluencePassword,
+			cfg.ConfluenceURL, cfg.ConfluenceToken,
 			cfg.ConfluenceSpaceKey, obsIndex, stateStore, logger,
 		)
 		logger.Info("Confluence publisher configured", "space", cfg.ConfluenceSpaceKey)
