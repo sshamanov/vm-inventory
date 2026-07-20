@@ -87,21 +87,22 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 }
 
 func (c *virshConn) ListStoragePools(ctx context.Context) ([]LibvirtPool, error) {
-	out, err := c.virshCtx(ctx, "pool-list", "--type", "logical", "--name")
-	if err != nil {
-		return nil, fmt.Errorf("virsh pool-list: %w", err)
-	}
-
 	var pools []LibvirtPool
-	for _, name := range strings.Fields(out) {
-		uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
-
-		p := LibvirtPool{UUID: uuid, Name: name, PoolType: "logical"}
-		if info := c.virshNoQuiet(ctx, "pool-info", name); info != "" {
-			p.TotalBytes = parsePoolInfo(info, "Capacity")
-			p.AvailBytes = parsePoolInfo(info, "Available")
+	for _, poolType := range []string{"dir", "logical", "fs", "netfs", "disk", "iscsi", "scsi", "zfs"} {
+		out, err := c.virshCtx(ctx, "pool-list", "--all", "--type", poolType, "--name")
+		if err != nil {
+			continue // no pools of this type
 		}
-		pools = append(pools, p)
+		for _, name := range strings.Fields(out) {
+			uuid := c.virshIgnoreError(ctx, "pool-uuid", name)
+
+			p := LibvirtPool{UUID: uuid, Name: name, PoolType: poolType}
+			if info := c.virshNoQuiet(ctx, "pool-info", name); info != "" {
+				p.TotalBytes = parsePoolInfo(info, "Capacity")
+				p.AvailBytes = parsePoolInfo(info, "Available")
+			}
+			pools = append(pools, p)
+		}
 	}
 	return pools, nil
 }
