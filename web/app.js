@@ -8,7 +8,7 @@ let authToken = "";
 // --- Init ---
 
 document.addEventListener("DOMContentLoaded", () => {
-  authToken = sessionStorage.getItem("inv-auth") || "";
+  authToken = localStorage.getItem("inv-auth") || "";
   if (!authToken) {
     showLogin();
   } else {
@@ -42,7 +42,7 @@ function showLogin() {
       if (resp.ok) {
         const data = await resp.json();
         authToken = data.token || "";
-        sessionStorage.setItem("inv-auth", authToken);
+        localStorage.setItem("inv-auth", authToken);
         overlay.remove();
         loadInventory();
         setInterval(loadInventory, 60000);
@@ -64,7 +64,7 @@ async function loadInventory() {
   try {
     const resp = await fetch("/api/inventory", { headers: authHeaders() });
     if (!resp.ok) {
-      if (resp.status === 401) { sessionStorage.removeItem("inv-auth"); showLogin(); return; }
+      if (resp.status === 401) { localStorage.removeItem("inv-auth"); showLogin(); return; }
       throw new Error(`HTTP ${resp.status}`);
     }
     currentData = await resp.json();
