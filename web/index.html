@@ -13,14 +13,13 @@
   <div class="header-controls">
     <label for="search" class="sr-only">Search inventory</label>
     <input type="search" id="search" placeholder="Search hosts, VMs, IPs..." aria-label="Search inventory">
-    <nav class="header-nav">
-      <span id="geo-nav"></span>
-      <span id="host-nav"></span>
-    </nav>
+    <select id="geo-filter" onchange="onGeoFilter()"><option value="">All Geos</option></select>
+    <label for="search" class="sr-only">Search inventory</label>
+    <input type="search" id="search" placeholder="Search hosts, VMs, IPs..." aria-label="Search inventory">
     <a id="confluence-link" href="#" target="_blank" rel="noopener" style="display:none">Confluence</a>
     <div class="header-status" id="cache-status" aria-live="polite">Loading...</div>
     <button id="refresh-btn" onclick="doRefresh()">Refresh</button>
-    <button id="publish-btn" onclick="doPublish()">Publish to Confluence</button>
+    <button id="publish-btn" onclick="doPublish()">Confluence Page</button>
   </div>
 </header>
 

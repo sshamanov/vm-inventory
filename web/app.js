@@ -2,6 +2,7 @@
 
 let currentData = null;
 let searchTerm = "";
+let geoFilter = "";
 let vmSort = { col: "name", asc: true };
 let authToken = "";
 
@@ -149,7 +150,7 @@ async function doPublish() {
     alert(`Publish failed: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Publish to Confluence";
+    btn.textContent = "Confluence Page";
   }
 }
 
@@ -165,18 +166,16 @@ function render(data) {
   document.getElementById("no-results").hidden = true;
 
   const container = document.getElementById("geos");
-  const hostNav = document.getElementById("host-nav");
-  const geoNav = document.getElementById("geo-nav");
-  if (geoNav) geoNav.innerHTML = "";
 
   let html = "";
-  let hostNavHTML = "";
 
   // Flatten: collect all hosts, VMs, and LXD across geos.
   const allHosts = [];
   const allVMs = [];
   const allLXDs = [];
+  const geoNames = new Set();
   for (const geo of data.geos) {
+    geoNames.add(geo.name);
     if (geo.hosts) {
       for (const h of geo.hosts) { h._geo = geo.name; allHosts.push(h); }
     }
@@ -188,6 +187,14 @@ function render(data) {
     }
   }
 
+  // Populate geo filter dropdown.
+  const geoSelect = document.getElementById("geo-filter");
+  const currentGeo = geoSelect.value;
+  geoSelect.innerHTML = '<option value="">All Geos</option>';
+  for (const g of [...geoNames].sort()) {
+    geoSelect.innerHTML += `<option value="${esc(g)}"${g === currentGeo ? " selected" : ""}>${esc(g)}</option>`;
+  }
+
   // Sort.
   allHosts.sort((a, b) => (a._geo || "").localeCompare(b._geo || "") || (a.id || "").localeCompare(b.id || ""));
   allVMs.sort(vmCompare);
@@ -195,13 +202,11 @@ function render(data) {
 
   // Hosts.
   for (const host of allHosts) {
+    if (geoFilter && host._geo !== geoFilter) continue;
     if (searchTerm && !hostMatches(host, host._geo, searchTerm)) continue;
 
-    const hostAnchor = slugify(host.id);
-    hostNavHTML += `<a href="#${hostAnchor}">${esc(host.id)}</a>`;
-
     const retainedClass = host.observation_state === "retained" ? " retained" : "";
-    html += `<div class="host-card${retainedClass}" id="${hostAnchor}" data-host="${esc(host.id)}">`;
+    html += `<div class="host-card${retainedClass}" data-host="${esc(host.id)}">`;
     html += `<h3>${esc(host.id)}</h3>`;
     html += `<div class="host-meta">`;
     html += `<span>Geo: ${esc(host._geo || host.geo || "—")}</span>`;
@@ -298,6 +303,7 @@ function render(data) {
     html += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
     html += `</tr></thead><tbody>`;
     for (const vm of allVMs) {
+        if (geoFilter && vm.geo !== geoFilter) continue;
       if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
       html += `<tr>`;
       html += `<td>${esc(vm.host_id)}</td>`;
@@ -322,6 +328,7 @@ function render(data) {
     html += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
     html += `</tr></thead><tbody>`;
     for (const ct of allLXDs) {
+        if (geoFilter && ct.geo !== geoFilter) continue;
       if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
       const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
       html += `<tr>`;
@@ -340,8 +347,6 @@ function render(data) {
   }
 
   container.innerHTML = html;
-  // geo-nav removed
-  hostNav.innerHTML = hostNavHTML;
 
   if (searchTerm && html === "") {
     document.getElementById("no-results").hidden = false;
@@ -351,6 +356,11 @@ function render(data) {
 // --- Search ---
 
 function onSearch(e) {
+
+function onGeoFilter() {
+  geoFilter = document.getElementById("geo-filter").value;
+  if (currentData) render(currentData);
+}
   searchTerm = e.target.value.trim().toLowerCase();
   if (currentData) render(currentData);
 }
