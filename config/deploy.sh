@@ -51,10 +51,11 @@ chmod +x "$BIN_DIR/bin-update.sh"
 echo "--- Downloading inventory-exporter ---"
 "$BIN_DIR/bin-update.sh" inventory-exporter "$BIN_DIR/inventory-exporter"
 
-# 3. Write example configs (always overwritten for reference).
+# 3. Write example configs — only create if missing, never overwrite user edits.
 echo "--- Writing example configs ---"
 mkdir -p "$CONF_DIR"
-cat > "$CONF_DIR/config.yaml" << 'CONF_EOF'
+if [ ! -f "$CONF_DIR/config.yaml" ]; then
+	cat > "$CONF_DIR/config.yaml" << 'CONF_EOF'
 # Inventory Exporter — Linux host configuration.
 # All fields are optional; defaults are shown below.
 
@@ -76,8 +77,12 @@ collectors:
   lxd:
     enabled: true  # collect LXD containers and storage pools
 CONF_EOF
+else
+	echo "  $CONF_DIR/config.yaml exists — keeping existing config"
+fi
 
-cat > "$CONF_DIR/esxi.yaml" << 'ESXI_EOF'
+if [ ! -f "$CONF_DIR/esxi.yaml" ]; then
+	cat > "$CONF_DIR/esxi.yaml" << 'ESXI_EOF'
 # Inventory Exporter — ESXi collector configuration.
 # One process collects multiple standalone ESXi hosts.
 
@@ -97,8 +102,11 @@ targets:
     password: changeme
     insecure_skip_verify: true  # defaults to true (ESXi uses self-signed certs)
 ESXI_EOF
+else
+	echo "  $CONF_DIR/esxi.yaml exists — keeping existing config"
+fi
 
-# 4. Install systemd units.
+# 4. Install systemd units (always overwrite to pick up fixes).
 echo "--- Installing systemd units ---"
 cat > "$SYSTEMD_DIR/inventory-exporter.service" << 'UNIT_EOF'
 [Unit]

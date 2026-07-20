@@ -80,6 +80,13 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	cfg := defaultConfig()
+	if *configFile == "" {
+		// Try default config path so hosts without -config.file in their
+		// systemd unit still pick up /etc/inventory-exporter/config.yaml.
+		if _, err := os.Stat("/etc/inventory-exporter/config.yaml"); err == nil {
+			*configFile = "/etc/inventory-exporter/config.yaml"
+		}
+	}
 	if *configFile != "" {
 		if loaded, err := exporter.LoadConfig(*configFile); err != nil {
 			logger.Warn("failed to load config, using defaults", "error", err)
