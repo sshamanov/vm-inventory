@@ -98,3 +98,33 @@ tbody tr:hover { background: #f8fafc; }
 
 /* Screen reader only */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+/* --- Login overlay --- */
+#login-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+#login-form {
+  background: var(--bg); padding: 2rem; border-radius: 8px;
+  text-align: center; min-width: 280px;
+}
+#login-form h2 { margin: 0 0 1rem 0; }
+#login-form input {
+  width: 100%; padding: 0.5rem; margin-bottom: 0.5rem;
+  border: 1px solid var(--border); border-radius: 4px;
+  font-size: 1rem;
+}
+#login-form button {
+  padding: 0.5rem 1.5rem; cursor: pointer;
+  background: var(--accent); color: #fff; border: none; border-radius: 4px;
+}
+#login-error { color: #d32f2f; margin-top: 0.5rem; }
+
+/* Confluence link in header */
+#confluence-link {
+  color: var(--accent); text-decoration: none; font-weight: 500;
+  padding: 0 0.5rem;
+}
+#confluence-link:hover { text-decoration: underline; }

@@ -11,6 +11,7 @@ type Config struct {
 	ConfluenceURL      string
 	ConfluenceToken    string // Personal Access Token (Bearer auth)
 	ConfluenceSpaceKey string
+	UIPassword         string // simple password gate for UI (UI_PASSWORD env)
 	ListenAddr         string
 	StatePath          string
 }
@@ -30,6 +31,7 @@ func LoadConfig() (*Config, error) {
 	cfg.ConfluenceURL = os.Getenv("CONFLUENCE_URL")
 	cfg.ConfluenceToken = os.Getenv("CONFLUENCE_TOKEN")
 	cfg.ConfluenceSpaceKey = os.Getenv("CONFLUENCE_SPACE_KEY")
+	cfg.UIPassword = os.Getenv("UI_PASSWORD")
 
 	if addr := os.Getenv("LISTEN_ADDR"); addr != "" {
 		cfg.ListenAddr = addr

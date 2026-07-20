@@ -3,24 +3,70 @@
 let currentData = null;
 let searchTerm = "";
 let vmSort = { col: "name", asc: true };
+let authToken = "";
 
 // --- Init ---
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadInventory();
-  setInterval(loadInventory, 60000); // auto-refresh every 60s
+  authToken = sessionStorage.getItem("inv-auth") || "";
+  if (!authToken) {
+    showLogin();
+  } else {
+    loadInventory();
+    setInterval(loadInventory, 60000);
+  }
   document.getElementById("search").addEventListener("input", debounce(onSearch, 200));
 });
+
+// --- Auth ---
+
+function showLogin() {
+  const overlay = document.createElement("div");
+  overlay.id = "login-overlay";
+  overlay.innerHTML = `<form id="login-form" autocomplete="off">
+    <h2>VM Inventory</h2>
+    <input type="password" id="login-password" placeholder="Password" autofocus>
+    <button type="submit">Login</button>
+    <p id="login-error" style="display:none">Wrong password</p>
+  </form>`;
+  document.body.appendChild(overlay);
+  document.getElementById("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById("login-password").value;
+    try {
+      const resp = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        authToken = data.token || "";
+        sessionStorage.setItem("inv-auth", authToken);
+        overlay.remove();
+        loadInventory();
+        setInterval(loadInventory, 60000);
+      } else {
+        document.getElementById("login-error").style.display = "";
+      }
+    } catch { document.getElementById("login-error").style.display = ""; }
+  });
+}
+
+function authHeaders() {
+  return authToken ? { "X-Auth": authToken, "Accept": "application/json" } : { "Accept": "application/json" };
+}
 
 // --- API ---
 
 async function loadInventory() {
   showLoading(true);
   try {
-    const resp = await fetch("/api/inventory", {
-      headers: { "Accept": "application/json" }
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const resp = await fetch("/api/inventory", { headers: authHeaders() });
+    if (!resp.ok) {
+      if (resp.status === 401) { sessionStorage.removeItem("inv-auth"); showLogin(); return; }
+      throw new Error(`HTTP ${resp.status}`);
+    }
     currentData = await resp.json();
     render(currentData);
     updateStatus();
@@ -34,12 +80,17 @@ async function loadInventory() {
 
 async function updateStatus() {
   try {
-    const resp = await fetch("/api/status");
+    const resp = await fetch("/api/status", { headers: authHeaders() });
     if (resp.ok) {
       const status = await resp.json();
       const el = document.getElementById("cache-status");
       const age = timeAgo(status.cache_generated_at);
       el.textContent = `Cache: ${age} | Hosts: ${status.host_count || 0} | Resources: ${status.resource_count || 0}`;
+      if (status.confluence_url) {
+        const cl = document.getElementById("confluence-link");
+        cl.href = status.confluence_url + "/display/" + (status.confluence_url.includes("atlassian.net") ? "" : "admin/") + "VM+Directory";
+        cl.style.display = "";
+      }
     }
   } catch (e) {
     // status fetch is best-effort
@@ -53,10 +104,10 @@ async function doRefresh() {
   try {
     const resp = await fetch("/api/refresh", {
       method: "POST",
-      headers: {
+      headers: Object.assign(authHeaders(), {
         "Content-Type": "application/json",
         "X-Inventory-Action": "refresh"
-      }
+      })
     });
     if (resp.ok) {
       await loadInventory();
@@ -80,10 +131,10 @@ async function doPublish() {
   try {
     const resp = await fetch("/api/confluence/publish", {
       method: "POST",
-      headers: {
+      headers: Object.assign(authHeaders(), {
         "Content-Type": "application/json",
         "X-Inventory-Action": "publish"
-      }
+      })
     });
     const result = await resp.json();
     const statusEl = document.getElementById("cache-status");
@@ -350,7 +401,14 @@ function timeAgo(ts) {
 
 function formatIPs(ips) {
   if (!ips || !ips.length) return "—";
-  const sorted = [...ips].sort();
+  const priority = (ip) => {
+    if (/^192\.168\./.test(ip)) return 0;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 1;
+    if (/^10\./.test(ip)) return 2;
+    if (/^fd/.test(ip)) return 3; // ULA IPv6
+    return 4; // other (public, link-local IPv6, etc.)
+  };
+  const sorted = [...ips].sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
   if (sorted.length <= 2) return sorted.map(esc).join(", ");
   return sorted.slice(0, 2).map(esc).join(", ") + ", …";
 }

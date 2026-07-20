@@ -24,8 +24,10 @@ type Handler struct {
 	promClient     *prometheus.Client
 	stateStore     *state.Store
 	publisher      *confluence.Publisher // nil if Confluence not configured
-	snapshotMu     sync.Mutex            // serializes refresh
-	publishMu      sync.Mutex            // serializes publication
+	uiPassword     string                // simple password gate; empty = no auth required
+	confluenceURL  string
+	snapshotMu     sync.Mutex // serializes refresh
+	publishMu      sync.Mutex // serializes publication
 	cachedSnapshot []byte
 	cachedEtag     string
 	cacheMu        sync.RWMutex
@@ -39,15 +41,18 @@ func NewHandler(
 	promClient *prometheus.Client,
 	stateStore *state.Store,
 	publisher *confluence.Publisher,
+	uiPassword, confluenceURL string,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		idx:        idx,
-		normalizer: normalizer.New(idx),
-		promClient: promClient,
-		stateStore: stateStore,
-		publisher:  publisher,
-		logger:     logger,
+		idx:           idx,
+		normalizer:    normalizer.New(idx),
+		promClient:    promClient,
+		stateStore:    stateStore,
+		publisher:     publisher,
+		uiPassword:    uiPassword,
+		confluenceURL: confluenceURL,
+		logger:        logger,
 	}
 }
 
@@ -61,6 +66,7 @@ func (h *Handler) MarkRefreshed() {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/inventory", h.handleInventory)
 	mux.HandleFunc("/api/status", h.handleStatus)
+	mux.HandleFunc("/api/auth", h.handleAuth)
 	mux.HandleFunc("/api/refresh", h.handleRefresh)
 	mux.HandleFunc("/api/confluence/publish", h.handlePublish)
 }
@@ -69,6 +75,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.checkAuth(r) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 
@@ -134,6 +144,7 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"last_refresh_status":       "ok",
 		"last_confluence_update":    nil,
 		"last_confluence_status":    st.LastConfluenceStatus,
+		"confluence_url":            h.confluenceURL,
 		"host_count":                h.idx.HostCount(),
 		"resource_count":            h.idx.ResourceCount(),
 	}
@@ -241,6 +252,32 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": string(result)})
+}
+
+// POST /api/auth — simple password gate. Returns 200 + token on success.
+func (h *Handler) handleAuth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if h.uiPassword == "" {
+		writeJSON(w, http.StatusOK, map[string]string{"token": ""})
+		return
+	}
+	var body struct{ Password string }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Password != h.uiPassword {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "wrong_password"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"token": h.uiPassword})
+}
+
+// checkAuth returns true if no password is required or the request has a valid token.
+func (h *Handler) checkAuth(r *http.Request) bool {
+	if h.uiPassword == "" {
+		return true
+	}
+	return r.Header.Get("X-Auth") == h.uiPassword
 }
 
 // checkMutationAuth enforces same-origin and custom header for mutation endpoints (§21.4).

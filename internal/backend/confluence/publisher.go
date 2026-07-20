@@ -190,9 +190,9 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 		buf.WriteString(`<h2>Virtual Machines</h2>`)
 		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Platform</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th></tr>`)
 		for _, vm := range allVMs {
-			ips := strings.Join(vm.IPs, ", ")
-			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s</td></tr>`,
-				vm.HostID, vm.Name, vm.Platform, vm.Geo, ips, vm.GuestOS, vm.CPUCount, formatBytes(vm.MemoryBytes), formatBytes(vm.DiskTotalBytes))
+			ips := formatIPs(vm.IPs)
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				vm.HostID, vm.Name, vm.Platform, vm.Geo, ips, vm.GuestOS, formatCPU(vm.CPUCount), formatBytes(vm.MemoryBytes), formatBytes(vm.DiskTotalBytes))
 		}
 		buf.WriteString(`</table>`)
 	}
@@ -202,9 +202,9 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 		buf.WriteString(`<h2>LXD Containers</h2>`)
 		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>CPU</th><th>RAM</th><th>Disk</th></tr>`)
 		for _, ct := range allLXDs {
-			ips := strings.Join(ct.IPs, ", ")
-			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s</td></tr>`,
-				ct.HostID, ct.Name, ct.Geo, ips, ct.GuestOS, ct.CPUCount, formatBytes(ct.MemoryBytes), formatBytes(ct.RootDiskBytes))
+			ips := formatIPs(ct.IPs)
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				ct.HostID, ct.Name, ct.Geo, ips, ct.GuestOS, formatCPU(ct.CPUCount), formatBytes(ct.MemoryBytes), formatBytes(ct.RootDiskBytes))
 		}
 		buf.WriteString(`</table>`)
 	}
@@ -212,9 +212,24 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	return buf.String()
 }
 
+func formatCPU(n int64) string {
+	if n == 0 { return "—" }
+	return fmt.Sprintf("%d", n)
+}
+
+func formatIPs(ips []string) string {
+	if len(ips) == 0 {
+		return "—"
+	}
+	if len(ips) <= 2 {
+		return strings.Join(ips, ", ")
+	}
+	return strings.Join(ips[:2], ", ") + ", …"
+}
+
 func formatBytes(bytes int64) string {
 	if bytes == 0 {
-		return "0 B"
+		return "—"
 	}
 	const unit = 1024
 	if bytes < unit {

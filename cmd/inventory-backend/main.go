@@ -76,7 +76,7 @@ func main() {
 		logger.Info("Confluence publisher configured", "space", cfg.ConfluenceSpaceKey)
 	}
 
-	handler := api.NewHandler(obsIndex, promClient, stateStore, pub, logger)
+	handler := api.NewHandler(obsIndex, promClient, stateStore, pub, cfg.UIPassword, cfg.ConfluenceURL, logger)
 	handler.MarkRefreshed() // set initial cache timestamp after startup rebuild
 
 	mux := http.NewServeMux()
