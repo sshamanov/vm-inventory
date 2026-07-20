@@ -146,12 +146,11 @@ WantedBy=timers.target
 TIMER_EOF
 
 systemctl daemon-reload
-systemctl enable inventory-exporter.service
+systemctl enable --now inventory-exporter.service
 systemctl enable --now inventory-exporter-update.timer
 
 echo
 echo "=== Deploy complete ==="
-echo "Service:  systemctl start inventory-exporter"
 echo "Status:   systemctl status inventory-exporter"
 echo "Config:   $CONF_DIR/config.yaml"
 echo "Update:   systemctl list-timers inventory-exporter-update"
