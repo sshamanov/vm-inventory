@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"vm-inventory/internal/backend/confluence"
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/normalizer"
 	"vm-inventory/internal/backend/prometheus"
@@ -22,8 +23,9 @@ type Handler struct {
 	normalizer     *normalizer.Normalizer
 	promClient     *prometheus.Client
 	stateStore     *state.Store
-	snapshotMu     sync.Mutex // serializes refresh
-	publishMu      sync.Mutex // serializes publication
+	publisher      *confluence.Publisher // nil if Confluence not configured
+	snapshotMu     sync.Mutex            // serializes refresh
+	publishMu      sync.Mutex            // serializes publication
 	cachedSnapshot []byte
 	cachedEtag     string
 	cacheMu        sync.RWMutex
@@ -31,11 +33,12 @@ type Handler struct {
 	logger         *slog.Logger
 }
 
-// NewHandler creates a new API handler.
+// NewHandler creates a new API handler. publisher may be nil if Confluence is not configured.
 func NewHandler(
 	idx *index.ObservationIndex,
 	promClient *prometheus.Client,
 	stateStore *state.Store,
+	publisher *confluence.Publisher,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
@@ -43,6 +46,7 @@ func NewHandler(
 		normalizer: normalizer.New(idx),
 		promClient: promClient,
 		stateStore: stateStore,
+		publisher:  publisher,
 		logger:     logger,
 	}
 }
@@ -211,6 +215,13 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.publishMu.Unlock()
 
+	if h.publisher == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "confluence_not_configured",
+		})
+		return
+	}
+
 	// Check Prometheus availability (§19.3).
 	if !h.promClient.IsAvailable(r.Context()) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -219,11 +230,17 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Confluence publication placeholder — full implementation in Phase 9.
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status": "published",
-		"note":   "confluence publisher not yet wired",
+	result := h.publisher.Publish(r.Context())
+
+	// Record publication result in state.
+	h.stateStore.Update(func(st *state.State) (*state.State, error) {
+		now := time.Now()
+		st.LastConfluenceUpdate = &now
+		st.LastConfluenceStatus = string(result)
+		return st, nil
 	})
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": string(result)})
 }
 
 // checkMutationAuth enforces same-origin and custom header for mutation endpoints (§21.4).

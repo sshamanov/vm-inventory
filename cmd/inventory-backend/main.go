@@ -76,7 +76,7 @@ func main() {
 		logger.Info("Confluence publisher configured", "space", cfg.ConfluenceSpaceKey)
 	}
 
-	handler := api.NewHandler(obsIndex, promClient, stateStore, logger)
+	handler := api.NewHandler(obsIndex, promClient, stateStore, pub, logger)
 	handler.MarkRefreshed() // set initial cache timestamp after startup rebuild
 
 	mux := http.NewServeMux()
@@ -139,17 +139,6 @@ func main() {
 		}
 	}()
 
-	if pub != nil {
-		mux.HandleFunc("/api/confluence/publish", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			result := pub.Publish(r.Context())
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"status":"` + string(result) + `"}`))
-		})
-	}
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
