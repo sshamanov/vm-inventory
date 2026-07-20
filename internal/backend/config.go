@@ -9,8 +9,8 @@ import (
 type Config struct {
 	PrometheusURL      string
 	ConfluenceURL      string
-	ConfluenceToken    string // Personal Access Token (Bearer auth)
-	ConfluenceSpaceKey string
+	ConfluenceToken  string // Personal Access Token (Bearer auth)
+	ConfluencePageID string // Confluence page ID (CONFLUENCE_PAGE_ID env)
 	UIPassword         string // simple password gate for UI (UI_PASSWORD env)
 	ListenAddr         string
 	StatePath          string
@@ -30,7 +30,7 @@ func LoadConfig() (*Config, error) {
 
 	cfg.ConfluenceURL = os.Getenv("CONFLUENCE_URL")
 	cfg.ConfluenceToken = os.Getenv("CONFLUENCE_TOKEN")
-	cfg.ConfluenceSpaceKey = os.Getenv("CONFLUENCE_SPACE_KEY")
+	cfg.ConfluencePageID = os.Getenv("CONFLUENCE_PAGE_ID")
 	cfg.UIPassword = os.Getenv("UI_PASSWORD")
 
 	if addr := os.Getenv("LISTEN_ADDR"); addr != "" {

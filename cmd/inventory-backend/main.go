@@ -68,12 +68,12 @@ func main() {
 	}
 
 	var pub *confluence.Publisher
-	if cfg.ConfluenceURL != "" && cfg.ConfluenceToken != "" && cfg.ConfluenceSpaceKey != "" {
+	if cfg.ConfluenceURL != "" && cfg.ConfluenceToken != "" && cfg.ConfluencePageID != "" {
 		pub = confluence.NewPublisher(
-			cfg.ConfluenceURL, cfg.ConfluenceToken,
-			cfg.ConfluenceSpaceKey, obsIndex, stateStore, logger,
+			cfg.ConfluenceURL, cfg.ConfluenceToken, cfg.ConfluencePageID,
+			obsIndex, stateStore, logger,
 		)
-		logger.Info("Confluence publisher configured", "space", cfg.ConfluenceSpaceKey)
+		logger.Info("Confluence publisher configured", "page", cfg.ConfluencePageID)
 	}
 
 	handler := api.NewHandler(obsIndex, promClient, stateStore, pub, cfg.UIPassword, cfg.ConfluenceURL, logger)
