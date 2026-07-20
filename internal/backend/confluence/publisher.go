@@ -71,8 +71,7 @@ func (p *Publisher) Publish(ctx context.Context) PublishResult {
 
 	// Compare with stored hash.
 	st, _ := p.stateStore.Load()
-	shouldPublish := st.LastConfluenceHash != hash
-	if !shouldPublish {
+	if st.LastConfluenceHash == hash {
 		p.logger.Info("confluence content unchanged, skipping publication")
 		return Unchanged
 	}
@@ -80,14 +79,25 @@ func (p *Publisher) Publish(ctx context.Context) PublishResult {
 	// Render to Confluence Storage Format.
 	body := renderStorageFormat(snapshot)
 
-	// Publish to Confluence.
-	if err := p.upsertPage(ctx, "VM Directory", body); err != nil {
+	// Publish to Confluence — use stored page ID if known, else find by title.
+	pageID := st.ConfluencePageID
+	if pageID == "" {
+		var err error
+		pageID, err = p.findPage(ctx, "VM Directory")
+		if err != nil {
+			p.logger.Error("confluence publication failed", "error", err)
+			return Failed
+		}
+	}
+
+	if err := p.upsertPage(ctx, pageID, "VM Directory", body); err != nil {
 		p.logger.Error("confluence publication failed", "error", err)
 		return Failed
 	}
 
-	// Atomically update stored hash.
+	// Atomically update stored hash and page ID.
 	p.stateStore.Update(func(st *state.State) (*state.State, error) {
+		st.ConfluencePageID = pageID
 		st.LastConfluenceHash = hash
 		return st, nil
 	})
@@ -244,88 +254,88 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
 }
 
-func (p *Publisher) upsertPage(ctx context.Context, title, body string) error {
-	// Confluence REST API: GET page by title, then PUT update or POST create.
-	url := fmt.Sprintf("%s/rest/api/content?title=%s&spaceKey=%s&expand=version",
+// findPage looks up a Confluence page by title and returns its ID, or "" if not found.
+func (p *Publisher) findPage(ctx context.Context, title string) (string, error) {
+	u := fmt.Sprintf("%s/rest/api/content?title=%s&spaceKey=%s&expand=version",
 		p.confluenceURL, url.QueryEscape(title), url.QueryEscape(p.spaceKey))
-
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Accept", "application/json")
-
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("finding page: %w", err)
+		return "", fmt.Errorf("finding page: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode == http.StatusOK {
-		// Page exists — update it.
-		var result struct {
-			Results []struct {
-				ID      string `json:"id"`
-				Version struct {
-					Number int `json:"number"`
-				} `json:"version"`
-			} `json:"results"`
-		}
+		var result struct{ Results []struct{ ID string `json:"id"` } `json:"results"` }
 		json.NewDecoder(resp.Body).Decode(&result)
 		if len(result.Results) > 0 {
-			page := result.Results[0]
-			updateURL := fmt.Sprintf("%s/rest/api/content/%s", p.confluenceURL, page.ID)
-			payload := map[string]interface{}{
-				"version": map[string]interface{}{"number": page.Version.Number + 1},
-				"title":   title,
-				"type":    "page",
-				"body": map[string]interface{}{
-					"storage": map[string]interface{}{
-						"value":          body,
-						"representation": "storage",
-					},
-				},
-			}
-			pl, _ := json.Marshal(payload)
-			req, _ := http.NewRequestWithContext(ctx, http.MethodPut, updateURL, bytes.NewReader(pl))
-			req.Header.Set("Authorization", "Bearer "+p.token)
-			req.Header.Set("Content-Type", "application/json")
-			resp, err = p.client.Do(req)
-			if err != nil {
-				return fmt.Errorf("updating page: %w", err)
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode >= 300 {
-				body, _ := io.ReadAll(resp.Body)
-				return fmt.Errorf("update failed: %d %s", resp.StatusCode, string(body))
-			}
-			return nil
+			return result.Results[0].ID, nil
 		}
+	}
+	return "", nil
+}
+
+// upsertPage updates an existing Confluence page by ID, or creates one if pageID is empty.
+func (p *Publisher) upsertPage(ctx context.Context, pageID, title, body string) error {
+	if pageID != "" {
+		// Fetch current version.
+		getURL := fmt.Sprintf("%s/rest/api/content/%s?expand=version", p.confluenceURL, pageID)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
+		req.Header.Set("Authorization", "Bearer "+p.token)
+		req.Header.Set("Accept", "application/json")
+		resp, err := p.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("fetching version: %w", err)
+		}
+		var page struct{ Version struct{ Number int `json:"number"` } `json:"version"` }
+		if resp.StatusCode == http.StatusOK {
+			json.NewDecoder(resp.Body).Decode(&page)
+		}
+		resp.Body.Close()
+
+		payload := map[string]interface{}{
+			"version": map[string]interface{}{"number": page.Version.Number + 1},
+			"title":   title,
+			"type":    "page",
+			"body":    map[string]interface{}{"storage": map[string]interface{}{"value": body, "representation": "storage"}},
+		}
+		pl, _ := json.Marshal(payload)
+		putURL := fmt.Sprintf("%s/rest/api/content/%s", p.confluenceURL, pageID)
+		req, _ = http.NewRequestWithContext(ctx, http.MethodPut, putURL, bytes.NewReader(pl))
+		req.Header.Set("Authorization", "Bearer "+p.token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = p.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("updating page: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			errBody, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("update failed: %d %s", resp.StatusCode, string(errBody))
+		}
+		return nil
 	}
 
 	// Page doesn't exist — create it.
 	createURL := fmt.Sprintf("%s/rest/api/content", p.confluenceURL)
 	payload := map[string]interface{}{
-		"title": title,
-		"type":  "page",
+		"title": title, "type": "page",
 		"space": map[string]string{"key": p.spaceKey},
-		"body": map[string]interface{}{
-			"storage": map[string]interface{}{
-				"value":          body,
-				"representation": "storage",
-			},
-		},
+		"body": map[string]interface{}{"storage": map[string]interface{}{"value": body, "representation": "storage"}},
 	}
 	pl, _ := json.Marshal(payload)
-	req, _ = http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(pl))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(pl))
 	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = p.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("creating page: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("create failed: %d %s", resp.StatusCode, string(body))
+		errBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("create failed: %d %s", resp.StatusCode, string(errBody))
 	}
 	return nil
 }
