@@ -3,6 +3,7 @@
 let currentData = null;
 let searchTerm = "";
 let geoFilter = "";
+let hostFilter = "";
 let vmSort = { col: "name", asc: true };
 let authToken = "";
 
@@ -150,7 +151,7 @@ async function doPublish() {
     alert(`Publish failed: ${err.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Confluence Page";
+    btn.textContent = "Publish to Confluence";
   }
 }
 
@@ -195,6 +196,15 @@ function render(data) {
     geoSelect.innerHTML += `<option value="${esc(g)}"${g === currentGeo ? " selected" : ""}>${esc(g)}</option>`;
   }
 
+  // Populate host filter dropdown.
+  const hostSelect = document.getElementById("host-filter");
+  const currentHost = hostSelect.value;
+  hostSelect.innerHTML = '<option value="">All Hosts</option>';
+  for (const h of allHosts) {
+    const label = `${h.id} (${h._geo || h.geo || "—"})`;
+    hostSelect.innerHTML += `<option value="${esc(h.id)}"${h.id === currentHost ? " selected" : ""}>${esc(label)}</option>`;
+  }
+
   // Sort.
   allHosts.sort((a, b) => (a._geo || "").localeCompare(b._geo || "") || (a.id || "").localeCompare(b.id || ""));
   allVMs.sort(vmCompare);
@@ -203,6 +213,7 @@ function render(data) {
   // Hosts.
   for (const host of allHosts) {
     if (geoFilter && host._geo !== geoFilter) continue;
+    if (hostFilter && host.id !== hostFilter) continue;
     if (searchTerm && !hostMatches(host, host._geo, searchTerm)) continue;
 
     const retainedClass = host.observation_state === "retained" ? " retained" : "";
@@ -355,13 +366,27 @@ function render(data) {
 
 // --- Search ---
 
+function resetDropdowns(except) {
+  if (except !== "search") { document.getElementById("search").value = ""; searchTerm = ""; }
+  if (except !== "geo") { document.getElementById("geo-filter").value = ""; geoFilter = ""; }
+  if (except !== "host") { document.getElementById("host-filter").value = ""; hostFilter = ""; }
+}
+
 function onSearch(e) {
+  searchTerm = e.target.value.trim().toLowerCase();
+  if (searchTerm) resetDropdowns("search");
+  if (currentData) render(currentData);
+}
 
 function onGeoFilter() {
   geoFilter = document.getElementById("geo-filter").value;
+  if (geoFilter) resetDropdowns("geo");
   if (currentData) render(currentData);
 }
-  searchTerm = e.target.value.trim().toLowerCase();
+
+function onHostFilter() {
+  hostFilter = document.getElementById("host-filter").value;
+  if (hostFilter) resetDropdowns("host");
   if (currentData) render(currentData);
 }
 

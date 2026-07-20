@@ -34,3 +34,4 @@ config/config.yaml
 test-results/
 samples/lxd*.json
 .env
+node_modules/

@@ -14,12 +14,11 @@
     <label for="search" class="sr-only">Search inventory</label>
     <input type="search" id="search" placeholder="Search hosts, VMs, IPs..." aria-label="Search inventory">
     <select id="geo-filter" onchange="onGeoFilter()"><option value="">All Geos</option></select>
-    <label for="search" class="sr-only">Search inventory</label>
-    <input type="search" id="search" placeholder="Search hosts, VMs, IPs..." aria-label="Search inventory">
-    <a id="confluence-link" href="#" target="_blank" rel="noopener" style="display:none">Confluence</a>
+    <select id="host-filter" onchange="onHostFilter()"><option value="">All Hosts</option></select>
+    <a id="confluence-link" href="#" target="_blank" rel="noopener" style="display:none">Confluence Page</a>
     <div class="header-status" id="cache-status" aria-live="polite">Loading...</div>
     <button id="refresh-btn" onclick="doRefresh()">Refresh</button>
-    <button id="publish-btn" onclick="doPublish()">Confluence Page</button>
+    <button id="publish-btn" onclick="doPublish()">Publish to Confluence</button>
   </div>
 </header>
 
