@@ -167,6 +167,8 @@ type ResourceDisk struct {
 // Platform values (§12.1).
 const (
 	PlatformLinux = "linux"
+	PlatformKVM   = "kvm"
+	PlatformLXD   = "lxd"
 	PlatformESXi  = "esxi"
 )
 

@@ -16,14 +16,16 @@ type HostCollector struct {
 	hostID      string
 	description string
 	geo         string
+	platform    string
 }
 
-// NewHostCollector creates a new HostCollector.
-func NewHostCollector(hostID, description, geo string) *HostCollector {
+// NewHostCollector creates a new HostCollector. platform should be "kvm" or "lxd".
+func NewHostCollector(hostID, description, geo, platform string) *HostCollector {
 	return &HostCollector{
 		hostID:      hostID,
 		description: shared.CleanDescription(description),
 		geo:         geo,
+		platform:    platform,
 	}
 }
 
@@ -101,7 +103,7 @@ func (c *HostCollector) collectHostIdentity() (exporter.MetricFamily, error) {
 		shared.LabelHostID:      c.hostID,
 		shared.LabelDescription:  c.description,
 		shared.LabelGeo:          c.geo,
-		shared.LabelPlatform:     shared.PlatformLinux,
+		shared.LabelPlatform:     c.platform,
 		shared.LabelHostname:     hostname,
 		shared.LabelOSName:       osName,
 		shared.LabelOSVersion:    osVersion,

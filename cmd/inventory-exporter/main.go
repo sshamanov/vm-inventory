@@ -19,6 +19,7 @@ import (
 	"vm-inventory/internal/exporter"
 	"vm-inventory/internal/exporter/esxi"
 	"vm-inventory/internal/exporter/linux"
+	"vm-inventory/internal/shared"
 	"vm-inventory/internal/version"
 )
 
@@ -103,9 +104,15 @@ func main() {
 	switch cfg.Mode {
 	case exporter.ModeLinux:
 		exporterHost = cfg.Host.ID
-		collectors = append(collectors,
-			linux.NewHostCollector(cfg.Host.ID, cfg.Host.Description, cfg.Host.Geo),
-		)
+		// Auto-detect platform: kvm if libvirt is available, else lxd.
+	platform := shared.PlatformLXD
+	if cfg.Collectors == nil || cfg.Collectors.Libvirt.IsEnabled() {
+		if _, err := linux.NewLibvirtConnection(); err == nil {
+			platform = shared.PlatformKVM
+		}
+	}
+	collectors = append(collectors,
+		linux.NewHostCollector(cfg.Host.ID, cfg.Host.Description, cfg.Host.Geo, platform))
 		// Libvirt and LXD are enabled by default when unconfigured (§7.1).
 		if cfg.Collectors == nil || cfg.Collectors.Libvirt.IsEnabled() {
 			conn, err := linux.NewLibvirtConnection()
