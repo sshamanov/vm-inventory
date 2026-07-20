@@ -280,9 +280,9 @@ function render(data) {
       html += `<td class="mono"${ctIPs ? ` title="${esc(ctIPs)}"` : ""}>${formatIPs(ct.ips)}</td>`;
       html += `<td>${esc(ct.description) || "—"}</td>`;
       html += `<td>${esc(ct.guest_os) || "—"}</td>`;
-      html += `<td>${ct.cpu_count || "—"} (${esc(ct.capacity_source_cpu)})</td>`;
-      html += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"} (${esc(ct.capacity_source_ram)})</td>`;
-      html += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"} (${esc(ct.capacity_source_disk)})</td>`;
+      html += `<td>${ct.cpu_count || "—"}</td>`;
+      html += `<td>${ct.memory_bytes ? formatBytes(ct.memory_bytes) : "—"}</td>`;
+      html += `<td>${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "—"}</td>`;
       html += `</tr>`;
     }
     html += `</tbody></table>`;

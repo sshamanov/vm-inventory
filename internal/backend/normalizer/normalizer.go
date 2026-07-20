@@ -191,6 +191,7 @@ func (n *Normalizer) buildGeos(
 					for _, ip := range res.IPs {
 						ips = append(ips, ip.Address)
 					}
+					ips = shared.FilterIPs(ips)
 					vm := shared.VMResource{
 						InventoryID:      res.StableID,
 						HostID:           res.Record.HostID,
@@ -224,6 +225,7 @@ func (n *Normalizer) buildGeos(
 					for _, ip := range res.IPs {
 						ips = append(ips, ip.Address)
 					}
+					ips = shared.FilterIPs(ips)
 					container := shared.LXDContainer{
 						InventoryID:      res.StableID,
 						HostID:           res.Record.HostID,

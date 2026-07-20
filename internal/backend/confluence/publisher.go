@@ -143,34 +143,90 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	buf.WriteString(`<p>Active inventory includes resources observed during the eight hours before publication.</p>`)
 	buf.WriteString(`<ac:structured-macro ac:name="toc"/>`)
 
-	for _, geo := range snapshot.Geos {
-		fmt.Fprintf(&buf, `<h2>Geo: %s</h2>`, geo.Name)
-		buf.WriteString(`<h3>Hosts</h3>`)
-		for _, host := range geo.Hosts {
-			fmt.Fprintf(&buf, `<h4>%s</h4>`, host.ID)
-			fmt.Fprintf(&buf, `<p>Platform: %s | OS: %s %s</p>`, host.Platform, host.OSName, host.OSVersion)
-			fmt.Fprintf(&buf, `<p>CPU: %s (%d sockets × %d cores × %d threads)</p>`,
-				host.CPU.Model, host.CPU.Sockets, host.CPU.Cores, host.CPU.Threads)
-			fmt.Fprintf(&buf, `<p>Memory: %d bytes total</p>`, host.Memory.TotalBytes)
-		}
-		if len(geo.VirtualMachines) > 0 {
-			buf.WriteString(`<h3>Virtual Machines</h3><table><tr><th>Host</th><th>Name</th><th>Platform</th><th>Guest OS</th><th>vCPU</th><th>RAM</th></tr>`)
-			for _, vm := range geo.VirtualMachines {
-				fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>`,
-					vm.HostID, vm.Name, vm.Platform, vm.GuestOS, vm.CPUCount, vm.MemoryBytes)
-			}
-			buf.WriteString(`</table>`)
-		}
-		if len(geo.LXDContainers) > 0 {
-			buf.WriteString(`<h3>LXD Containers</h3><table><tr><th>Host</th><th>Name</th><th>Guest OS</th><th>CPU</th><th>RAM</th></tr>`)
-			for _, ct := range geo.LXDContainers {
-				fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>`,
-					ct.HostID, ct.Name, ct.GuestOS, ct.CPUCount, ct.MemoryBytes)
-			}
-			buf.WriteString(`</table>`)
-		}
+	// Flatten all hosts, VMs, and LXD across geos.
+	type hostWithGeo struct {
+		host *shared.Host
+		geo  string
 	}
+	var allHosts []hostWithGeo
+	var allVMs []shared.VMResource
+	var allLXDs []shared.LXDContainer
+	for _, g := range snapshot.Geos {
+		for i := range g.Hosts {
+			allHosts = append(allHosts, hostWithGeo{host: &g.Hosts[i], geo: g.Name})
+		}
+		allVMs = append(allVMs, g.VirtualMachines...)
+		allLXDs = append(allLXDs, g.LXDContainers...)
+	}
+
+	// --- Hosts table ---
+	buf.WriteString(`<h2>Hosts</h2>`)
+	buf.WriteString(`<table><tr><th>Host</th><th>Geo</th><th>Platform</th><th>OS</th><th>CPU</th><th>RAM</th><th>Storage</th></tr>`)
+	for _, hg := range allHosts {
+		h := hg.host
+		cpu := fmt.Sprintf("%s (%d/%d/%d)", h.CPU.Model, h.CPU.Sockets, h.CPU.Cores, h.CPU.Threads)
+		ram := formatBytes(h.Memory.TotalBytes)
+		storage := ""
+		if len(h.StoragePools) > 0 {
+			var parts []string
+			for _, p := range h.StoragePools {
+				parts = append(parts, fmt.Sprintf("%s: %s total", p.PoolName, formatBytes(p.TotalBytes)))
+			}
+			storage = strings.Join(parts, "; ")
+		} else if len(h.Disks) > 0 {
+			var parts []string
+			for _, d := range h.Disks {
+				parts = append(parts, fmt.Sprintf("%s × %d", formatBytes(d.SizeBytes), d.Count))
+			}
+			storage = strings.Join(parts, ", ")
+		}
+		fmt.Fprintf(&buf, `<tr><td><strong>%s</strong></td><td>%s</td><td>%s</td><td>%s %s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+			h.ID, hg.geo, h.Platform, h.OSName, h.OSVersion, cpu, ram, storage)
+	}
+	buf.WriteString(`</table>`)
+
+	// --- Virtual Machines table ---
+	if len(allVMs) > 0 {
+		buf.WriteString(`<h2>Virtual Machines</h2>`)
+		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Platform</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th></tr>`)
+		for _, vm := range allVMs {
+			ips := strings.Join(vm.IPs, ", ")
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s</td></tr>`,
+				vm.HostID, vm.Name, vm.Platform, vm.Geo, ips, vm.GuestOS, vm.CPUCount, formatBytes(vm.MemoryBytes), formatBytes(vm.DiskTotalBytes))
+		}
+		buf.WriteString(`</table>`)
+	}
+
+	// --- LXD Containers table ---
+	if len(allLXDs) > 0 {
+		buf.WriteString(`<h2>LXD Containers</h2>`)
+		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>CPU</th><th>RAM</th><th>Disk</th></tr>`)
+		for _, ct := range allLXDs {
+			ips := strings.Join(ct.IPs, ", ")
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td><td>%s</td></tr>`,
+				ct.HostID, ct.Name, ct.Geo, ips, ct.GuestOS, ct.CPUCount, formatBytes(ct.MemoryBytes), formatBytes(ct.RootDiskBytes))
+		}
+		buf.WriteString(`</table>`)
+	}
+
 	return buf.String()
+}
+
+func formatBytes(bytes int64) string {
+	if bytes == 0 {
+		return "0 B"
+	}
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	units := []string{"KiB", "MiB", "GiB", "TiB", "PiB"}
+	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
 }
 
 func (p *Publisher) upsertPage(ctx context.Context, title, body string) error {
