@@ -12,10 +12,8 @@ import (
 // State represents the persistent application state (§20).
 type State struct {
 	SchemaVersion         int        `json:"schema_version"`
-	LastConfluenceHash    string     `json:"last_confluence_hash"`
 	LastConfluenceUpdate  *time.Time `json:"last_confluence_update"`
 	LastConfluenceStatus  string     `json:"last_confluence_status"`
-	LastConfluenceError   *string    `json:"last_confluence_error"`
 	LastSuccessfulRefresh *time.Time `json:"last_successful_prometheus_refresh"`
 }
 

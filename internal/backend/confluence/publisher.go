@@ -3,19 +3,16 @@ package confluence
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/normalizer"
-	"vm-inventory/internal/backend/state"
 	"vm-inventory/internal/shared"
 )
 
@@ -23,9 +20,8 @@ import (
 type PublishResult string
 
 const (
-	Published  PublishResult = "published"
-	Unchanged  PublishResult = "unchanged"
-	Failed     PublishResult = "failed"
+	Published PublishResult = "published"
+	Failed    PublishResult = "failed"
 )
 
 // Publisher orchestrates Confluence page publication.
@@ -36,7 +32,6 @@ type Publisher struct {
 	pageID        string // Confluence page ID to update
 	idx           *index.ObservationIndex
 	normalizer    *normalizer.Normalizer
-	stateStore    *state.Store
 	logger        *slog.Logger
 }
 
@@ -46,7 +41,6 @@ type Publisher struct {
 func NewPublisher(
 	confluenceURL, token, pageID string,
 	idx *index.ObservationIndex,
-	stateStore *state.Store,
 	logger *slog.Logger,
 ) *Publisher {
 	return &Publisher{
@@ -56,83 +50,23 @@ func NewPublisher(
 		pageID:        pageID,
 		idx:           idx,
 		normalizer:    normalizer.New(idx),
-		stateStore:    stateStore,
 		logger:        logger,
 	}
 }
 
-// Publish runs the full publication flow (§19).
+// Publish runs the publication flow: render current snapshot and update the Confluence page.
 func (p *Publisher) Publish(ctx context.Context) PublishResult {
-	// Build 8-hour snapshot.
 	snapshot := p.normalizer.BuildConfluenceSnapshot()
-
-	// Compute canonical hash (§19.4).
-	hash := computeHash(snapshot)
-
-	// Compare with stored hash.
-	st, _ := p.stateStore.Load()
-	if st.LastConfluenceHash == hash {
-		p.logger.Info("confluence content unchanged, skipping publication")
-		return Unchanged
-	}
-
-	// Render to Confluence Storage Format.
 	body := renderStorageFormat(snapshot)
 
-	// Update Confluence page by ID.
+	p.logger.Info("publishing to Confluence", "page", p.pageID)
 	if err := p.updatePage(ctx, p.pageID, "VM Directory", body); err != nil {
-		p.logger.Error("confluence publication failed", "error", err)
+		p.logger.Error("confluence publish failed", "error", err, "page", p.pageID)
 		return Failed
 	}
 
-	// Persist content hash.
-	p.stateStore.Update(func(st *state.State) (*state.State, error) {
-		st.LastConfluenceHash = hash
-		return st, nil
-	})
-
-	p.logger.Info("confluence page published")
+	p.logger.Info("confluence page published", "page", p.pageID)
 	return Published
-}
-
-// computeHash creates a canonical SHA-256 hash of stable inventory values (§19.4).
-func computeHash(snapshot *shared.NormalizedInventory) string {
-	h := sha256.New()
-
-	// Sort geos for deterministic output.
-	sortedGeos := make([]shared.Geo, len(snapshot.Geos))
-	copy(sortedGeos, snapshot.Geos)
-	sort.Slice(sortedGeos, func(i, j int) bool { return sortedGeos[i].Name < sortedGeos[j].Name })
-
-	for _, geo := range sortedGeos {
-		fmt.Fprintf(h, "geo:%s\n", geo.Name)
-		for _, host := range geo.Hosts {
-			fmt.Fprintf(h, "host:%s desc:%s plat:%s os:%s ver:%s\n",
-				host.ID, host.Description, host.Platform, host.OSName, host.OSVersion)
-			fmt.Fprintf(h, "cpu:%s %d/%d/%d\n", host.CPU.Model, host.CPU.Sockets, host.CPU.Cores, host.CPU.Threads)
-			fmt.Fprintf(h, "mem:%d\n", host.Memory.TotalBytes)
-			fmt.Fprintf(h, "hp:%d\n", host.Memory.HugepagesTotalBytes)
-			for _, dg := range host.Disks {
-				fmt.Fprintf(h, "disk:%d*%d\n", dg.SizeBytes, dg.Count)
-			}
-			for _, fs := range host.Filesystems {
-				fmt.Fprintf(h, "fs:%s:%d\n", fs.FilesystemID, fs.TotalBytes)
-			}
-			for _, pool := range host.StoragePools {
-				fmt.Fprintf(h, "pool:%s:%d\n", pool.PoolID, pool.TotalBytes)
-			}
-		}
-		for _, vm := range geo.VirtualMachines {
-			fmt.Fprintf(h, "vm:%s:%s os:%s cpu:%d mem:%d\n",
-				vm.HostID, vm.Name, vm.GuestOS, vm.CPUCount, vm.MemoryBytes)
-		}
-		for _, ct := range geo.LXDContainers {
-			fmt.Fprintf(h, "lxd:%s:%s os:%s cpu:%d mem:%d\n",
-				ct.HostID, ct.Name, ct.GuestOS, ct.CPUCount, ct.MemoryBytes)
-		}
-	}
-
-	return fmt.Sprintf("sha256:%x", h.Sum(nil))
 }
 
 // renderStorageFormat builds Confluence Storage Format HTML (§20).

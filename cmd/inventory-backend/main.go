@@ -71,7 +71,7 @@ func main() {
 	if cfg.ConfluenceURL != "" && cfg.ConfluenceToken != "" && cfg.ConfluencePageID != "" {
 		pub = confluence.NewPublisher(
 			cfg.ConfluenceURL, cfg.ConfluenceToken, cfg.ConfluencePageID,
-			obsIndex, stateStore, logger,
+			obsIndex, logger,
 		)
 		logger.Info("Confluence publisher configured", "page", cfg.ConfluencePageID)
 	}

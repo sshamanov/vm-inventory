@@ -138,10 +138,10 @@ async function doPublish() {
     });
     const result = await resp.json();
     const statusEl = document.getElementById("cache-status");
-    if (result.status === "published") {
+    if (result.error) {
+      statusEl.textContent = `Publish failed: ${result.error}`;
+    } else if (result.status === "published") {
       statusEl.textContent = "Published to Confluence";
-    } else if (result.status === "unchanged") {
-      statusEl.textContent = "Confluence page unchanged — skipped";
     } else {
       statusEl.textContent = `Publish: ${result.status}`;
     }
