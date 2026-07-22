@@ -314,7 +314,8 @@ function render(data) {
     html += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th>`;
     html += `</tr></thead><tbody>`;
     for (const vm of allVMs) {
-        if (geoFilter && vm.geo !== geoFilter) continue;
+      if (geoFilter && vm.geo !== geoFilter) continue;
+      if (hostFilter && vm.host_id !== hostFilter) continue;
       if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
       html += `<tr>`;
       html += `<td>${esc(vm.host_id)}</td>`;
@@ -339,7 +340,8 @@ function render(data) {
     html += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS/Image</th><th>CPU</th><th>RAM</th><th>Disk</th>`;
     html += `</tr></thead><tbody>`;
     for (const ct of allLXDs) {
-        if (geoFilter && ct.geo !== geoFilter) continue;
+      if (geoFilter && ct.geo !== geoFilter) continue;
+      if (hostFilter && ct.host_id !== hostFilter) continue;
       if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
       const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
       html += `<tr>`;

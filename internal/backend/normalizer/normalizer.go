@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"strings"
+
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/shared"
@@ -152,7 +154,14 @@ func (n *Normalizer) buildGeos(
 			// Plain Linux: show filesystems only.
 			hasPools := len(obs.StoragePools) > 0
 			for _, p := range obs.StoragePools {
-				if p.PoolName == "default" {
+				// Skip network-backed libvirt pools (NFS, iSCSI, SCSI) — only
+				// local pools are shown.
+				if isNetworkPool(p.PoolType) {
+					continue
+				}
+				// Skip libvirt's auto-created "default" pool — it cannot be
+				// removed but is not used when LVM pools are configured.
+				if p.PoolName == "default" && strings.HasPrefix(p.PoolType, "libvirt-") {
 					continue
 				}
 				avail := int64(p.AvailBytes)
@@ -352,4 +361,11 @@ func MergeIPs(host *shared.Host, ips []prometheus.HostIPRecord) {
 		}
 	}
 	host.IPs = shared.FilterIPs(filtered)
+}
+
+// isNetworkPool returns true if poolType is a network-backed libvirt pool
+// that should not appear as local storage (NFS, iSCSI, SCSI).
+func isNetworkPool(poolType string) bool {
+	return strings.HasPrefix(poolType, "libvirt-") &&
+		(poolType == "libvirt-netfs" || poolType == "libvirt-iscsi" || poolType == "libvirt-scsi")
 }
