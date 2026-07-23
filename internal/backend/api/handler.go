@@ -131,22 +131,22 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("failed to load state", "error", err)
 		st = &state.State{SchemaVersion: 1}
 	}
-		cacheTime := h.lastRefresh
+	cacheTime := h.lastRefresh
 	if cacheTime.IsZero() {
 		cacheTime = time.Now().UTC()
 	}
 
 	status := map[string]interface{}{
-		"version":                   version.Version,
-		"commit":                    version.Commit,
-		"cache_generated_at":        cacheTime.Format(time.RFC3339),
-		"last_prometheus_refresh":   nil,
-		"last_refresh_status":       "ok",
-		"last_confluence_update":    nil,
-		"last_confluence_status":    st.LastConfluenceStatus,
-		"confluence_url":            h.confluenceURL,
-		"host_count":                h.idx.HostCount(),
-		"resource_count":            h.idx.ResourceCount(),
+		"version":                 version.Version,
+		"commit":                  version.Commit,
+		"cache_generated_at":      cacheTime.Format(time.RFC3339),
+		"last_prometheus_refresh": nil,
+		"last_refresh_status":     "ok",
+		"last_confluence_update":  nil,
+		"last_confluence_status":  st.LastConfluenceStatus,
+		"confluence_url":          h.confluenceURL,
+		"host_count":              h.idx.HostCount(),
+		"resource_count":          h.idx.ResourceCount(),
 	}
 
 	if st.LastSuccessfulRefresh != nil {
@@ -190,6 +190,14 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Decode results into the observation index.
 	grouped := prometheus.MetricsByName(qr.Data.Result)
+
+	// Disk bytes: pre-aggregate per resource before applying to
+	// avoid += accumulation across refresh cycles.
+	if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
+		delete(grouped, "inventory_resource_disk_bytes")
+		h.idx.ApplyDiskBytes(diskResults, time.Now())
+	}
+
 	for _, results := range grouped {
 		for _, result := range results {
 			h.processMetricResult(result, time.Now())
@@ -205,7 +213,7 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Rebuild cached snapshot after refresh.
 	h.rebuildSnapshot()
-		h.lastRefresh = time.Now()
+	h.lastRefresh = time.Now()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -344,10 +352,6 @@ func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp 
 	case "inventory_resource_memory_bytes":
 		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.MemoryBytes = prometheus.ParseValue(result)
-		}, timestamp)
-	case "inventory_resource_disk_bytes":
-		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.DiskBytes += prometheus.ParseValue(result)
 		}, timestamp)
 	case "inventory_resource_ip_info":
 		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {

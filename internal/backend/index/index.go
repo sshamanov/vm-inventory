@@ -17,22 +17,22 @@ type ObservationIndex struct {
 
 // HostObservation tracks a host's latest observation with joined metric data.
 type HostObservation struct {
-	Record          prometheus.HostInfoRecord
-	LastSeen        time.Time
-	RefreshID       string
-	IPs             []prometheus.HostIPRecord
-	CPUSockets      float64
-	CPUCores        float64
-	CPUThreads      float64
-	CPUModel        string
-	CPUUsage        float64
-	MemoryTotal     float64
-	MemoryAvail     float64
-	BlockDevices    []prometheus.BlockDeviceRecord
-	Filesystems     []prometheus.FilesystemRecord
-	StoragePools    []prometheus.StoragePoolRecord
-	HugepagesTotal  map[string]float64 // page_size -> total_bytes
-	HugepagesFree   map[string]float64 // page_size -> free_bytes
+	Record         prometheus.HostInfoRecord
+	LastSeen       time.Time
+	RefreshID      string
+	IPs            []prometheus.HostIPRecord
+	CPUSockets     float64
+	CPUCores       float64
+	CPUThreads     float64
+	CPUModel       string
+	CPUUsage       float64
+	MemoryTotal    float64
+	MemoryAvail    float64
+	BlockDevices   []prometheus.BlockDeviceRecord
+	Filesystems    []prometheus.FilesystemRecord
+	StoragePools   []prometheus.StoragePoolRecord
+	HugepagesTotal map[string]float64 // page_size -> total_bytes
+	HugepagesFree  map[string]float64 // page_size -> free_bytes
 }
 
 // MergeBlockDevice adds or updates a block device record, merging by DeviceID.
@@ -117,6 +117,29 @@ type ResourceObservation struct {
 	MemoryBytes float64
 	DiskBytes   float64
 	IPs         []prometheus.HostIPRecord
+}
+
+// ApplyDiskBytes pre-aggregates disk byte metrics by inventory_id and sets
+// the total per resource. This replaces += accumulation which would compound
+// across background refresh cycles when the index is not cleared first.
+func (idx *ObservationIndex) ApplyDiskBytes(diskResults []prometheus.MetricResult, now time.Time) {
+	totals := make(map[string]float64)
+	for _, r := range diskResults {
+		totals[r.Metric["inventory_id"]] += prometheus.ParseValue(r)
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	for invID, total := range totals {
+		r, ok := idx.resources[invID]
+		if !ok {
+			r = &ResourceObservation{StableID: invID}
+			idx.resources[invID] = r
+		}
+		r.DiskBytes = total
+		if now.After(r.LastSeen) {
+			r.LastSeen = now
+		}
+	}
 }
 
 // Clear removes all observations — used before a full refresh rebuild.

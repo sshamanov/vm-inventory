@@ -50,6 +50,14 @@ func main() {
 		qr, err := promClient.QueryInstant(context.Background(), prometheus.QueryAllInventory())
 		if err == nil {
 			grouped := prometheus.MetricsByName(qr.Data.Result)
+
+			// Disk bytes: pre-aggregate per resource before applying to
+			// avoid += accumulation across refresh cycles.
+			if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
+				delete(grouped, "inventory_resource_disk_bytes")
+				obsIndex.ApplyDiskBytes(diskResults, time.Now())
+			}
+
 			for _, results := range grouped {
 				for _, result := range results {
 					processMetricResult(obsIndex, result)
@@ -127,6 +135,14 @@ func main() {
 				continue
 			}
 			grouped := prometheus.MetricsByName(qr.Data.Result)
+
+			// Disk bytes: pre-aggregate per resource before applying to
+			// avoid += accumulation across refresh cycles.
+			if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
+				delete(grouped, "inventory_resource_disk_bytes")
+				obsIndex.ApplyDiskBytes(diskResults, time.Now())
+			}
+
 			for _, results := range grouped {
 				for _, result := range results {
 					processMetricResult(obsIndex, result)
@@ -138,7 +154,6 @@ func main() {
 			handler.MarkRefreshed()
 		}
 	}()
-
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
@@ -210,10 +225,6 @@ func processMetricResult(obsIndex *index.ObservationIndex, result prometheus.Met
 	case "inventory_resource_memory_bytes":
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.MemoryBytes = prometheus.ParseValue(result)
-		}, now)
-	case "inventory_resource_disk_bytes":
-		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.DiskBytes += prometheus.ParseValue(result)
 		}, now)
 	case "inventory_resource_ip_info":
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
