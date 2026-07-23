@@ -15,6 +15,7 @@ import (
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
+	"vm-inventory/internal/shared"
 )
 
 func main() {
@@ -53,9 +54,19 @@ func main() {
 
 			// Disk bytes: pre-aggregate per resource before applying to
 			// avoid += accumulation across refresh cycles.
-			if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
-				delete(grouped, "inventory_resource_disk_bytes")
+			if diskResults, ok := grouped[shared.MetricResourceDiskBytes]; ok {
+				delete(grouped, shared.MetricResourceDiskBytes)
 				obsIndex.ApplyDiskBytes(diskResults, time.Now())
+			}
+			// Host IPs: pre-aggregate and deduplicate to avoid append accumulation.
+			if hostIPs, ok := grouped[shared.MetricHostIPInfo]; ok {
+				delete(grouped, shared.MetricHostIPInfo)
+				obsIndex.ApplyHostIPs(hostIPs, time.Now())
+			}
+			// Resource IPs: pre-aggregate and deduplicate to avoid append accumulation.
+			if resIPs, ok := grouped[shared.MetricResourceIPInfo]; ok {
+				delete(grouped, shared.MetricResourceIPInfo)
+				obsIndex.ApplyResourceIPs(resIPs, time.Now())
 			}
 
 			for _, results := range grouped {
@@ -72,6 +83,8 @@ func main() {
 				"hosts", obsIndex.HostCount(),
 				"resources", obsIndex.ResourceCount(),
 			)
+		} else {
+			logger.Error("startup Prometheus query failed, starting with empty index", "error", err)
 		}
 	}
 
@@ -136,11 +149,25 @@ func main() {
 			}
 			grouped := prometheus.MetricsByName(qr.Data.Result)
 
+			// Reset detail fields to prevent stale entries from persisting
+			// across refresh cycles (BlockDevices, Filesystems, StoragePools).
+			obsIndex.ResetHostDetailFields()
+
 			// Disk bytes: pre-aggregate per resource before applying to
 			// avoid += accumulation across refresh cycles.
-			if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
-				delete(grouped, "inventory_resource_disk_bytes")
+			if diskResults, ok := grouped[shared.MetricResourceDiskBytes]; ok {
+				delete(grouped, shared.MetricResourceDiskBytes)
 				obsIndex.ApplyDiskBytes(diskResults, time.Now())
+			}
+			// Host IPs: pre-aggregate and deduplicate to avoid append accumulation.
+			if hostIPs, ok := grouped[shared.MetricHostIPInfo]; ok {
+				delete(grouped, shared.MetricHostIPInfo)
+				obsIndex.ApplyHostIPs(hostIPs, time.Now())
+			}
+			// Resource IPs: pre-aggregate and deduplicate to avoid append accumulation.
+			if resIPs, ok := grouped[shared.MetricResourceIPInfo]; ok {
+				delete(grouped, shared.MetricResourceIPInfo)
+				obsIndex.ApplyResourceIPs(resIPs, time.Now())
 			}
 
 			for _, results := range grouped {
@@ -151,6 +178,11 @@ func main() {
 			logger.Debug("background refresh complete",
 				"hosts", obsIndex.HostCount(), "resources", obsIndex.ResourceCount(),
 			)
+			now := time.Now()
+			stateStore.Update(func(st *state.State) (*state.State, error) {
+				st.LastSuccessfulRefresh = &now
+				return st, nil
+			})
 			handler.MarkRefreshed()
 		}
 	}()
@@ -183,10 +215,6 @@ func processMetricResult(obsIndex *index.ObservationIndex, result prometheus.Met
 	case "inventory_host_info":
 		rec := prometheus.DecodeHostInfo(result)
 		obsIndex.UpsertHost(rec, now)
-	case "inventory_host_ip_info":
-		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
-			h.IPs = append(h.IPs, prometheus.DecodeHostIP(result))
-		}, now)
 	case "inventory_host_cpu_info":
 		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {
 			h.CPUModel = result.Metric["model"]
@@ -225,13 +253,6 @@ func processMetricResult(obsIndex *index.ObservationIndex, result prometheus.Met
 	case "inventory_resource_memory_bytes":
 		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.MemoryBytes = prometheus.ParseValue(result)
-		}, now)
-	case "inventory_resource_ip_info":
-		obsIndex.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.IPs = append(r.IPs, prometheus.HostIPRecord{
-				Address: result.Metric["address"],
-				Family:  result.Metric["family"],
-			})
 		}, now)
 	case "inventory_host_block_device_info", "inventory_host_block_device_bytes":
 		obsIndex.UpdateHostField(hostID, func(h *index.HostObservation) {

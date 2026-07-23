@@ -120,25 +120,82 @@ type ResourceObservation struct {
 }
 
 // ApplyDiskBytes pre-aggregates disk byte metrics by inventory_id and sets
-// the total per resource. This replaces += accumulation which would compound
-// across background refresh cycles when the index is not cleared first.
+// the total per resource. Uses = assignment (not +=) so repeated calls
+// across background refresh cycles replace rather than compound.
 func (idx *ObservationIndex) ApplyDiskBytes(diskResults []prometheus.MetricResult, now time.Time) {
 	totals := make(map[string]float64)
 	for _, r := range diskResults {
-		totals[r.Metric["inventory_id"]] += prometheus.ParseValue(r)
+		totals[r.Metric[shared.LabelInventoryID]] += prometheus.ParseValue(r)
 	}
+	for invID, total := range totals {
+		idx.UpdateResourceField(invID, func(r *ResourceObservation) {
+			r.DiskBytes = total
+		}, now)
+	}
+}
+
+// ApplyHostIPs pre-aggregates host IP metrics by host_id, deduplicates by
+// address+family, and assigns the deduplicated set. This replaces append
+// accumulation which would compound across background refresh cycles.
+func (idx *ObservationIndex) ApplyHostIPs(ipResults []prometheus.MetricResult, now time.Time) {
+	type ipKey struct{ addr, family string }
+	hostIPs := make(map[string]map[ipKey]struct{})
+	for _, r := range ipResults {
+		hostID := r.Metric[shared.LabelHostID]
+		key := ipKey{r.Metric[shared.LabelAddress], r.Metric[shared.LabelFamily]}
+		if hostIPs[hostID] == nil {
+			hostIPs[hostID] = make(map[ipKey]struct{})
+		}
+		hostIPs[hostID][key] = struct{}{}
+	}
+	for hostID, ipSet := range hostIPs {
+		ips := make([]prometheus.HostIPRecord, 0, len(ipSet))
+		for k := range ipSet {
+			ips = append(ips, prometheus.HostIPRecord{Address: k.addr, Family: k.family})
+		}
+		idx.UpdateHostField(hostID, func(h *HostObservation) {
+			h.IPs = ips
+		}, now)
+	}
+}
+
+// ApplyResourceIPs pre-aggregates resource IP metrics by inventory_id,
+// deduplicates by address+family, and assigns the deduplicated set.
+func (idx *ObservationIndex) ApplyResourceIPs(ipResults []prometheus.MetricResult, now time.Time) {
+	type ipKey struct{ addr, family string }
+	resIPs := make(map[string]map[ipKey]struct{})
+	for _, r := range ipResults {
+		invID := r.Metric[shared.LabelInventoryID]
+		key := ipKey{r.Metric[shared.LabelAddress], r.Metric[shared.LabelFamily]}
+		if resIPs[invID] == nil {
+			resIPs[invID] = make(map[ipKey]struct{})
+		}
+		resIPs[invID][key] = struct{}{}
+	}
+	for invID, ipSet := range resIPs {
+		ips := make([]prometheus.HostIPRecord, 0, len(ipSet))
+		for k := range ipSet {
+			ips = append(ips, prometheus.HostIPRecord{Address: k.addr, Family: k.family})
+		}
+		idx.UpdateResourceField(invID, func(r *ResourceObservation) {
+			r.IPs = ips
+		}, now)
+	}
+}
+
+// ResetHostDetailFields clears all list/map detail fields on every host.
+// Called before a background refresh cycle to prevent stale entries from
+// persisting across cycles when merge-based fields (BlockDevices,
+// Filesystems, StoragePools) are rebuilt from Prometheus.
+func (idx *ObservationIndex) ResetHostDetailFields() {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	for invID, total := range totals {
-		r, ok := idx.resources[invID]
-		if !ok {
-			r = &ResourceObservation{StableID: invID}
-			idx.resources[invID] = r
-		}
-		r.DiskBytes = total
-		if now.After(r.LastSeen) {
-			r.LastSeen = now
-		}
+	for _, h := range idx.hosts {
+		h.BlockDevices = nil
+		h.Filesystems = nil
+		h.StoragePools = nil
+		h.HugepagesTotal = nil
+		h.HugepagesFree = nil
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"vm-inventory/internal/backend/normalizer"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
+	"vm-inventory/internal/shared"
 	"vm-inventory/internal/version"
 )
 
@@ -107,6 +108,7 @@ func (h *Handler) rebuildSnapshot() ([]byte, string) {
 	s := h.normalizer.BuildUISnapshot()
 	data, err := json.Marshal(s)
 	if err != nil {
+		h.logger.Error("failed to marshal inventory snapshot", "error", err)
 		return nil, ""
 	}
 	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(data))
@@ -193,9 +195,19 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Disk bytes: pre-aggregate per resource before applying to
 	// avoid += accumulation across refresh cycles.
-	if diskResults, ok := grouped["inventory_resource_disk_bytes"]; ok {
-		delete(grouped, "inventory_resource_disk_bytes")
+	if diskResults, ok := grouped[shared.MetricResourceDiskBytes]; ok {
+		delete(grouped, shared.MetricResourceDiskBytes)
 		h.idx.ApplyDiskBytes(diskResults, time.Now())
+	}
+	// Host IPs: pre-aggregate and deduplicate to avoid append accumulation.
+	if hostIPs, ok := grouped[shared.MetricHostIPInfo]; ok {
+		delete(grouped, shared.MetricHostIPInfo)
+		h.idx.ApplyHostIPs(hostIPs, time.Now())
+	}
+	// Resource IPs: pre-aggregate and deduplicate to avoid append accumulation.
+	if resIPs, ok := grouped[shared.MetricResourceIPInfo]; ok {
+		delete(grouped, shared.MetricResourceIPInfo)
+		h.idx.ApplyResourceIPs(resIPs, time.Now())
 	}
 
 	for _, results := range grouped {
@@ -310,10 +322,6 @@ func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp 
 	case "inventory_host_info":
 		rec := prometheus.DecodeHostInfo(result)
 		h.idx.UpsertHost(rec, timestamp)
-	case "inventory_host_ip_info":
-		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
-			ho.IPs = append(ho.IPs, prometheus.DecodeHostIP(result))
-		}, timestamp)
 	case "inventory_host_cpu_info":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
 			ho.CPUModel = result.Metric["model"]
@@ -352,13 +360,6 @@ func (h *Handler) processMetricResult(result prometheus.MetricResult, timestamp 
 	case "inventory_resource_memory_bytes":
 		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
 			r.MemoryBytes = prometheus.ParseValue(result)
-		}, timestamp)
-	case "inventory_resource_ip_info":
-		h.idx.UpdateResourceField(inventoryID, func(r *index.ResourceObservation) {
-			r.IPs = append(r.IPs, prometheus.HostIPRecord{
-				Address: result.Metric["address"],
-				Family:  result.Metric["family"],
-			})
 		}, timestamp)
 	case "inventory_host_block_device_info", "inventory_host_block_device_bytes":
 		h.idx.UpdateHostField(hostID, func(ho *index.HostObservation) {
