@@ -323,7 +323,7 @@ function render(data) {
       html += `<td${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(vmLabel)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
       html += `<td>${esc(vm.platform)}</td>`;
       html += `<td>${esc(vm.geo || "—")}</td>`;
-      const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
+      const vmIPs = (vm.ips && vm.ips.length) ? vm.ips.join(", ") : "";
       html += `<td class="mono"${vmIPs ? ` title="${esc(vmIPs)}"` : ""}>${formatIPs(vm.ips)}</td>`;
       html += `<td>${esc(vm.description) || "—"}</td>`;
       html += `<td>${esc(vm.guest_os) || "—"}</td>`;
@@ -344,7 +344,7 @@ function render(data) {
       if (geoFilter && ct.geo !== geoFilter) continue;
       if (hostFilter && ct.host_id !== hostFilter) continue;
       if (searchTerm && !resourceMatches(ct, "lxd", searchTerm)) continue;
-      const ctIPs = (ct.ips && ct.ips.length) ? [...ct.ips].sort().join(", ") : "";
+      const ctIPs = (ct.ips && ct.ips.length) ? ct.ips.join(", ") : "";
       html += `<tr>`;
       html += `<td>${esc(ct.host_id)}</td>`;
       html += `<td>${esc(ct.name)}${ct.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(ct.last_seen) + ')</span>' : ''}</td>`;
@@ -443,21 +443,14 @@ function timeAgo(ts) {
   return `${Math.round(diff / 86400)}d ago`;
 }
 
+// formatIPs renders the leading addresses of a resource. The API returns them in
+// display order — the management address first, then the rest canonically (§11.4,
+// §12.7) — so they are shown as sent. Re-sorting here would disagree with the
+// tooltip, which lists the same slice to the same order.
 function formatIPs(ips) {
   if (!ips || !ips.length) return "—";
-  const priority = (ip) => {
-    if (/^192\.168\./.test(ip)) return 0;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return 1;
-    if (/^10\./.test(ip)) return 2;
-    if (/^fd/.test(ip)) return 3; // ULA IPv6
-    return 4; // other (public, link-local IPv6, etc.)
-  };
-  // The API orders the management address first; pin it so it is always shown.
-  const [mgmt, ...rest] = ips;
-  const sorted = rest.sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
-  const ordered = [mgmt, ...sorted];
-  if (ordered.length <= 2) return ordered.map(esc).join(", ");
-  return ordered.slice(0, 2).map(esc).join(", ") + ", …";
+  if (ips.length <= 2) return ips.map(esc).join(", ");
+  return ips.slice(0, 2).map(esc).join(", ") + ", …";
 }
 
 function formatBytes(bytes) {
