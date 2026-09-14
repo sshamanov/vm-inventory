@@ -108,7 +108,7 @@ func (c *LXDCollector) buildResourceMetrics(instances []LXDInstance) []exporter.
 		infoMetrics = append(infoMetrics, exporter.Metric{Labels: infoLabels, Value: 1})
 
 		// Resource IPs.
-		for _, ip := range shared.FilterIPs(inst.IPs) {
+		for _, ip := range shared.SelectIPs(inst.Name, shared.FilterIPs(inst.IPs)) {
 			ipMetrics = append(ipMetrics, exporter.Metric{
 				Labels: map[string]string{
 					shared.LabelInventoryID: inventoryID,

@@ -452,9 +452,12 @@ function formatIPs(ips) {
     if (/^fd/.test(ip)) return 3; // ULA IPv6
     return 4; // other (public, link-local IPv6, etc.)
   };
-  const sorted = [...ips].sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
-  if (sorted.length <= 2) return sorted.map(esc).join(", ");
-  return sorted.slice(0, 2).map(esc).join(", ") + ", …";
+  // The API orders the management address first; pin it so it is always shown.
+  const [mgmt, ...rest] = ips;
+  const sorted = rest.sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
+  const ordered = [mgmt, ...sorted];
+  if (ordered.length <= 2) return ordered.map(esc).join(", ");
+  return ordered.slice(0, 2).map(esc).join(", ") + ", …";
 }
 
 function formatBytes(bytes) {

@@ -130,17 +130,16 @@ func SortIPs(ips []string) {
 // (§11, §12.7). Some guests legitimately hold large address blocks (load
 // generators, routers); unbounded, they dominate the exporter's series count
 // and make the UI table unusable.
-const MaxResourceIPs = 32
+const MaxResourceIPs = 5
 
-// SelectIPs bounds a resource's address list to MaxResourceIPs entries.
-// Addresses that also appear as a token of the resource name are always kept —
-// by convention the name embeds the management address (e.g.
-// "loadgen-01_192.0.2.120") — and the remaining slots are filled with the lowest
-// addresses in canonical order. Lists already within the bound are returned
-// unchanged.
+// SelectIPs bounds a resource's address list to MaxResourceIPs entries and
+// orders it for display. The resource's management address — the one embedded
+// in the resource name by convention, e.g. "loadgen-01_192.0.2.120" — is placed
+// first; the remaining slots take the lowest addresses in canonical order.
+// Lists within the bound keep every address, still management-first.
 func SelectIPs(name string, ips []string) []string {
-	if len(ips) <= MaxResourceIPs {
-		return ips
+	if len(ips) == 0 {
+		return nil
 	}
 
 	named := make(map[string]struct{})
@@ -150,14 +149,20 @@ func SelectIPs(name string, ips []string) []string {
 		named[tok] = struct{}{}
 	}
 
-	out := make([]string, 0, MaxResourceIPs)
+	limit := len(ips)
+	if limit > MaxResourceIPs {
+		limit = MaxResourceIPs
+	}
+
+	out := make([]string, 0, limit)
 	for _, ip := range ips {
 		if _, ok := named[ip]; ok {
 			out = append(out, ip)
+			break
 		}
 	}
 	for _, ip := range ips {
-		if len(out) >= MaxResourceIPs {
+		if len(out) >= limit {
 			break
 		}
 		if _, ok := named[ip]; ok {
@@ -165,7 +170,6 @@ func SelectIPs(name string, ips []string) []string {
 		}
 		out = append(out, ip)
 	}
-	SortIPs(out)
 	return out
 }
 
