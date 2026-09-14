@@ -26,16 +26,20 @@ type LXDClient interface {
 
 // LXDInstance represents a LXD container's collected data.
 type LXDInstance struct {
-	Project     string
-	Name        string
-	Description string
-	Arch        string
-	OSName      string
-	IPs         []string
-	CPULimit    *int64 // nil = no explicit limit, fall back to host
-	MemLimit    *int64 // nil = fall back to host
+	// InstanceUUID is LXD's volatile.uuid: "globally unique across all servers
+	// and projects", set once by LXD and unchanged by rename. Empty on instances
+	// created before LXD 4.9, which have no such key.
+	InstanceUUID  string
+	Project       string
+	Name          string
+	Description   string
+	Arch          string
+	OSName        string
+	IPs           []string
+	CPULimit      *int64 // nil = no explicit limit, fall back to host
+	MemLimit      *int64 // nil = fall back to host
 	RootDiskBytes *int64 // nil = fall back to pool
-	BackingPool string
+	BackingPool   string
 }
 
 // LXDPool represents a LXD storage pool.
@@ -92,7 +96,12 @@ func (c *LXDCollector) buildResourceMetrics(instances []LXDInstance) []exporter.
 	var infoMetrics, ipMetrics, cpuMetrics, memMetrics, diskMetrics []exporter.Metric
 
 	for _, inst := range instances {
-		platformSourceID := fmt.Sprintf("%s/%s", inst.Project, inst.Name)
+		platformSourceID := inst.InstanceUUID
+		if platformSourceID == "" {
+			// Pre-4.9 instances carry no volatile.uuid; the project-qualified
+			// name is the best remaining identity, though it tracks renames.
+			platformSourceID = fmt.Sprintf("%s/%s", inst.Project, inst.Name)
+		}
 		inventoryID := shared.StableID(c.hostID, shared.KindLXDContainer, platformSourceID)
 
 		// Resource info (§12.7).

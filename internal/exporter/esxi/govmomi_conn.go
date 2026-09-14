@@ -159,7 +159,7 @@ func (c *govmomiClient) VirtualMachines(ctx context.Context) ([]ESXiVM, error) {
 	}
 	if err := pc.Retrieve(ctx, refs, []string{
 		"name", "runtime.powerState", "config.hardware",
-		"config.annotation", "guest", "summary.config",
+		"config.annotation", "config.uuid", "guest", "summary.config",
 	}, &movms); err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (c *govmomiClient) VirtualMachines(ctx context.Context) ([]ESXiVM, error) {
 	var result []ESXiVM
 	for _, mvm := range movms {
 		vm := ESXiVM{
-			PlatformID:  mvm.Reference().Value,
+			PlatformID:  esxiPlatformID(mvm),
 			Name:        mvm.Name,
 			PowerState:  string(mvm.Runtime.PowerState),
 			Description: mvm.Config.Annotation,
@@ -210,6 +210,21 @@ func (c *govmomiClient) VirtualMachines(ctx context.Context) ([]ESXiVM, error) {
 
 func (c *govmomiClient) Logout(ctx context.Context) error {
 	return c.client.Logout(ctx)
+}
+
+// esxiPlatformID returns a VM's durable identity (§11.4): the BIOS UUID stored
+// in the VMX as uuid.bios, which survives rename, reboot and re-registration.
+// The ManagedObjectReference is only a fallback. It is allocated from a small
+// sequential pool and released on delete, so a newly created VM can inherit a
+// retired VM's reference — and with it its inventory_id, silently collapsing two
+// different machines into one record. A missing BIOS UUID is still worse to
+// leave empty than to fill with the reference: an empty source ID is identical
+// for every such VM, which collides outright.
+func esxiPlatformID(mvm mo.VirtualMachine) string {
+	if mvm.Config != nil && mvm.Config.Uuid != "" {
+		return mvm.Config.Uuid
+	}
+	return mvm.Reference().Value
 }
 
 // extractDatastoreName parses the datastore name from a VirtualDisk backing filename.

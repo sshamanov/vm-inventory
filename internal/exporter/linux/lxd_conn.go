@@ -45,6 +45,12 @@ func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
 		return nil, fmt.Errorf("lxc list: %w", err)
 	}
 
+	return parseLXDInstances(out)
+}
+
+// parseLXDInstances converts `lxc list --format json` output into instances,
+// keeping only running ones.
+func parseLXDInstances(out []byte) ([]LXDInstance, error) {
 	var raw []struct {
 		Name           string            `json:"name"`
 		Status         string            `json:"status"`
@@ -72,6 +78,14 @@ func (c *lxcConn) ListInstances() ([]LXDInstance, error) {
 		cfg := e.ExpandedConfig
 		if cfg == nil {
 			cfg = e.Config
+		}
+
+		// volatile.* keys are instance-local, so the instance config is the
+		// authoritative source; the expanded view is a fallback for LXD
+		// versions that only surface them there.
+		inst.InstanceUUID = e.Config["volatile.uuid"]
+		if inst.InstanceUUID == "" {
+			inst.InstanceUUID = cfg["volatile.uuid"]
 		}
 
 		if v, ok := cfg["image.description"]; ok {
