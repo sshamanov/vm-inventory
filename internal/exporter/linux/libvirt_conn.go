@@ -3,6 +3,7 @@ package linux
 import (
 	"context"
 	"fmt"
+	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 	d := LibvirtDomain{
 		UUID:        uuid,
 		Name:        name,
+		Title:       c.virshIgnoreError(ctx, "desc", uuid, "--title"),
 		Description: c.virshIgnoreError(ctx, "desc", uuid),
 	}
 
@@ -77,10 +79,13 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 		d.IPs = parseIPs(ifaces)
 	}
 
-	// Guest OS.
+	// Guest OS. Prefer the human-readable pretty-name, fall back to the short name.
 	guestOS := c.virshIgnoreError(ctx, "qemu-agent-command", uuid, `{"execute":"guest-get-osinfo"}`)
 	if guestOS != "" {
-		d.GuestOS = extractJSON(guestOS, "name")
+		d.GuestOS = extractJSON(guestOS, "pretty-name")
+		if d.GuestOS == "" {
+			d.GuestOS = extractJSON(guestOS, "name")
+		}
 	}
 
 	return d, nil
@@ -176,14 +181,25 @@ func parsePoolInfo(output, field string) int64 {
 	return 0
 }
 
+// parseIPs extracts addresses from `virsh domifaddr --source=agent` output.
+// Columns are: Name, MAC address, Protocol, Address — where Address carries a
+// CIDR prefix (e.g. "192.0.2.25/24"). The prefix is stripped so the result is
+// a bare IP, and non-address columns (MACs, "-" placeholders) are skipped.
 func parseIPs(output string) []string {
 	var ips []string
 	for _, line := range strings.Split(output, "\n") {
-		for _, f := range strings.Fields(line) {
-			if strings.Count(f, ".") == 3 || strings.Count(f, ":") >= 2 {
-				ips = append(ips, f)
-			}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue // header and separator lines
 		}
+		addr := fields[len(fields)-1]
+		if slash := strings.IndexByte(addr, '/'); slash >= 0 {
+			addr = addr[:slash]
+		}
+		if net.ParseIP(addr) == nil {
+			continue
+		}
+		ips = append(ips, addr)
 	}
 	return ips
 }

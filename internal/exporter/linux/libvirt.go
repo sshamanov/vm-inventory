@@ -28,6 +28,7 @@ type LibvirtConnection interface {
 type LibvirtDomain struct {
 	UUID        string
 	Name        string
+	Title       string
 	Description string
 	VCPUs       int
 	MemoryBytes int64
@@ -109,6 +110,7 @@ func (c *LibvirtCollector) buildResourceMetrics(domains []LibvirtDomain) []expor
 			shared.LabelInventoryID:  inventoryID,
 			shared.LabelHostID:       c.hostID,
 			shared.LabelName:         d.Name,
+			shared.LabelTitle:        shared.CleanDescription(d.Title),
 			shared.LabelKind:         shared.KindLibvirtVM,
 			shared.LabelDescription:  shared.CleanDescription(d.Description),
 			shared.LabelGuestOS:      d.GuestOS,
