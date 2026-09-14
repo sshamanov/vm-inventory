@@ -29,6 +29,9 @@ docker-compose.override.yml
 config/esxi.yaml
 config/config.yaml
 
+# Local debug notes (internal addresses)
+DEBUG_INVENTORY.md
+
 # State data
 /data/
 test-results/
