@@ -236,7 +236,7 @@ func (c *ESXiCollector) buildVMMetrics(hostID string, vms []ESXiVM) []exporter.M
 		}
 		infoMetrics = append(infoMetrics, exporter.Metric{Labels: infoLabels, Value: 1})
 
-		for _, ip := range shared.FilterIPs(vm.IPs) {
+		for _, ip := range shared.SelectIPs(vm.Name, shared.FilterIPs(vm.IPs)) {
 			ipMetrics = append(ipMetrics, exporter.Metric{
 				Labels: map[string]string{
 					shared.LabelInventoryID: inventoryID,

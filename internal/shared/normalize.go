@@ -126,6 +126,49 @@ func SortIPs(ips []string) {
 	})
 }
 
+// MaxResourceIPs bounds the number of address series emitted per resource
+// (§11, §12.7). Some guests legitimately hold large address blocks (load
+// generators, routers); unbounded, they dominate the exporter's series count
+// and make the UI table unusable.
+const MaxResourceIPs = 32
+
+// SelectIPs bounds a resource's address list to MaxResourceIPs entries.
+// Addresses that also appear as a token of the resource name are always kept —
+// by convention the name embeds the management address (e.g.
+// "loadgen-01_192.0.2.120") — and the remaining slots are filled with the lowest
+// addresses in canonical order. Lists already within the bound are returned
+// unchanged.
+func SelectIPs(name string, ips []string) []string {
+	if len(ips) <= MaxResourceIPs {
+		return ips
+	}
+
+	named := make(map[string]struct{})
+	for _, tok := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '_' || r == ' ' || r == '-'
+	}) {
+		named[tok] = struct{}{}
+	}
+
+	out := make([]string, 0, MaxResourceIPs)
+	for _, ip := range ips {
+		if _, ok := named[ip]; ok {
+			out = append(out, ip)
+		}
+	}
+	for _, ip := range ips {
+		if len(out) >= MaxResourceIPs {
+			break
+		}
+		if _, ok := named[ip]; ok {
+			continue
+		}
+		out = append(out, ip)
+	}
+	SortIPs(out)
+	return out
+}
+
 // IPFamily returns the family string ("4" or "6") for a valid IP.
 func IPFamily(ipStr string) string {
 	ip := net.ParseIP(ipStr)

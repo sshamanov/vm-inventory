@@ -119,7 +119,7 @@ func (c *LibvirtCollector) buildResourceMetrics(domains []LibvirtDomain) []expor
 		infoMetrics = append(infoMetrics, exporter.Metric{Labels: infoLabels, Value: 1})
 
 		// Resource IPs.
-		for _, ip := range shared.FilterIPs(d.IPs) {
+		for _, ip := range shared.SelectIPs(d.Name, shared.FilterIPs(d.IPs)) {
 			ipMetrics = append(ipMetrics, exporter.Metric{
 				Labels: map[string]string{
 					shared.LabelInventoryID: inventoryID,
