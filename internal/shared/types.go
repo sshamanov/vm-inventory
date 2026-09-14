@@ -114,6 +114,7 @@ type VMResource struct {
 	InventoryID      string    `json:"inventory_id"`
 	HostID           string    `json:"host_id"`
 	Name             string    `json:"name"`
+	Title            string    `json:"title"`
 	Kind             string    `json:"kind"` // "libvirt_vm" or "esxi_vm"
 	Platform         string    `json:"platform"` // "KVM" or "ESXi"
 	Geo              string    `json:"geo"`

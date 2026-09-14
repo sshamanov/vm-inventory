@@ -76,6 +76,7 @@ const (
 	LabelPoolType      = "pool_type"
 	LabelInventoryID   = "inventory_id"
 	LabelName          = "name"
+	LabelTitle         = "title"
 	LabelKind          = "kind"
 	LabelGuestOS       = "guest_os"
 	LabelDiskID        = "disk_id"

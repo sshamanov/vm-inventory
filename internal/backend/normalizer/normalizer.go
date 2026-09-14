@@ -205,6 +205,7 @@ func (n *Normalizer) buildGeos(
 						InventoryID:      res.StableID,
 						HostID:           res.Record.HostID,
 						Name:             res.Record.Name,
+						Title:            res.Record.Title,
 						Kind:             res.Record.Kind,
 						Geo:              geoName,
 						Description:      res.Record.Description,

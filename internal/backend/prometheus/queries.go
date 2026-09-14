@@ -174,6 +174,7 @@ type ResourceInfoRecord struct {
 	InventoryID  string
 	HostID       string
 	Name         string
+	Title        string
 	Kind         string
 	Description  string
 	GuestOS      string
@@ -250,6 +251,7 @@ func DecodeResourceInfo(m MetricResult) ResourceInfoRecord {
 		InventoryID:  m.Metric[shared.LabelInventoryID],
 		HostID:       m.Metric[shared.LabelHostID],
 		Name:         m.Metric[shared.LabelName],
+		Title:        m.Metric[shared.LabelTitle],
 		Kind:         m.Metric[shared.LabelKind],
 		Description:  m.Metric[shared.LabelDescription],
 		GuestOS:      m.Metric[shared.LabelGuestOS],

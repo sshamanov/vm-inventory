@@ -319,7 +319,8 @@ function render(data) {
       if (searchTerm && !resourceMatches(vm, "vm", searchTerm)) continue;
       html += `<tr>`;
       html += `<td>${esc(vm.host_id)}</td>`;
-      html += `<td>${esc(vm.name)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
+      const vmLabel = vm.title || vm.name;
+      html += `<td${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(vmLabel)}${vm.last_seen ? ' <span class="last-seen">(last seen ' + timeAgo(vm.last_seen) + ')</span>' : ''}</td>`;
       html += `<td>${esc(vm.platform)}</td>`;
       html += `<td>${esc(vm.geo || "—")}</td>`;
       const vmIPs = (vm.ips && vm.ips.length) ? [...vm.ips].sort().join(", ") : "";
@@ -403,6 +404,7 @@ function hostMatches(host, geo, term) {
 
 function resourceMatches(res, type, term) {
   if ((res.name || "").toLowerCase().includes(term)) return true;
+  if ((res.title || "").toLowerCase().includes(term)) return true;
   if ((res.description || "").toLowerCase().includes(term)) return true;
   if ((res.guest_os || "").toLowerCase().includes(term)) return true;
   if ((res.ips || []).some(ip => ip.includes(term))) return true;
@@ -421,6 +423,11 @@ function esc(s) {
   const div = document.createElement("div");
   div.appendChild(document.createTextNode(String(s)));
   return div.innerHTML;
+}
+
+// escAttr is like esc but also safe inside a double-quoted HTML attribute.
+function escAttr(s) {
+  return esc(s).replace(/"/g, "&quot;");
 }
 
 function slugify(s) {
