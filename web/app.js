@@ -429,18 +429,18 @@ function hostCard(host, index, perHost, ctPerHost) {
   if (host.hostname && host.hostname !== host.id) rows.push(["Hostname", host.hostname]);
   if (host.ips && host.ips.length) {
     const all = host.ips.join(", ");
-    rows.push(["IP", `<span title="${escAttr(all)}">${formatIPs(host.ips)}</span>`]);
+    rows.push(["IP", raw(`<span title="${escAttr(all)}">${formatIPs(host.ips)}</span>`)]);
   }
   if (host.disks && host.disks.length) {
     const groups = host.disks.map(d => `${d.count} × ${formatBytes(d.size_bytes)}`);
-    rows.push(["Disks", `<span class="disk-list">${esc(groups.join(" · "))}</span>`]);
+    rows.push(["Disks", raw(`<span class="disk-list">${esc(groups.join(" · "))}</span>`)]);
   }
   if (retained) {
-    rows.push(["Last seen", `<span class="host-stale">${esc(timeAgo(host.last_seen) || "unknown")}</span>`]);
+    rows.push(["Last seen", raw(`<span class="host-stale">${esc(timeAgo(host.last_seen) || "unknown")}</span>`)]);
   }
   if (rows.length) {
     h += `<dl class="host-meta">` +
-      rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("") +
+      rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v && v.html != null ? v.html : esc(v)}</dd>`).join("") +
       `</dl>`;
   }
 
@@ -674,6 +674,12 @@ function esc(s) {
 function escAttr(s) {
   return esc(s).replace(/"/g, "&quot;");
 }
+
+// raw tags a value as pre-rendered HTML. Host meta rows escape every untagged
+// value, so a row added without escaping cannot inject markup: those fields
+// arrive from Prometheus labels that anything able to name a guest or a
+// storage pool can set.
+function raw(html) { return { html }; }
 
 // na renders the missing-value placeholder (§10: unknown values render as —).
 function na() { return `<span class="na">—</span>`; }
