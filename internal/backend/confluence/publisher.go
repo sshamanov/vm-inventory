@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -121,11 +122,11 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	// --- Virtual Machines table ---
 	if len(allVMs) > 0 {
 		buf.WriteString(`<h2>Virtual Machines</h2>`)
-		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Platform</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th></tr>`)
+		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Platform</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>vCPU</th><th>RAM</th><th>Disk</th><th>Description</th></tr>`)
 		for _, vm := range allVMs {
 			ips := formatIPs(vm.IPs)
-			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-				vm.HostID, vm.Name, vm.Platform, vm.Geo, ips, vm.GuestOS, formatCPU(vm.CPUCount), formatBytes(vm.MemoryBytes), formatBytes(vm.DiskTotalBytes))
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				vm.HostID, vm.Name, vm.Platform, vm.Geo, ips, vm.GuestOS, formatCPU(vm.CPUCount), formatBytes(vm.MemoryBytes), formatBytes(vm.DiskTotalBytes), formatText(vm.Description))
 		}
 		buf.WriteString(`</table>`)
 	}
@@ -133,11 +134,11 @@ func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	// --- LXD Containers table ---
 	if len(allLXDs) > 0 {
 		buf.WriteString(`<h2>LXD Containers</h2>`)
-		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>CPU</th><th>RAM</th><th>Disk</th></tr>`)
+		buf.WriteString(`<table><tr><th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Guest OS</th><th>CPU</th><th>RAM</th><th>Disk</th><th>Description</th></tr>`)
 		for _, ct := range allLXDs {
 			ips := formatIPs(ct.IPs)
-			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
-				ct.HostID, ct.Name, ct.Geo, ips, ct.GuestOS, formatCPU(ct.CPUCount), formatBytes(ct.MemoryBytes), formatBytes(ct.RootDiskBytes))
+			fmt.Fprintf(&buf, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+				ct.HostID, ct.Name, ct.Geo, ips, ct.GuestOS, formatCPU(ct.CPUCount), formatBytes(ct.MemoryBytes), formatBytes(ct.RootDiskBytes), formatText(ct.Description))
 		}
 		buf.WriteString(`</table>`)
 	}
@@ -158,6 +159,16 @@ func formatIPs(ips []string) string {
 		return strings.Join(ips, ", ")
 	}
 	return strings.Join(ips[:2], ", ") + ", …"
+}
+
+// formatText renders free text for the page: the em dash for a value the
+// inventory does not have (§18), and escaped otherwise, since a description is
+// free text landing in Confluence's storage format.
+func formatText(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return html.EscapeString(s)
 }
 
 func formatBytes(bytes int64) string {
