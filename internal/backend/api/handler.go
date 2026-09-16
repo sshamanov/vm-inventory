@@ -18,22 +18,29 @@ import (
 	"vm-inventory/internal/version"
 )
 
+// cachedView is one rendered view window. Each window needs its own body and
+// its own validator: the switch asks for now/month/all, and a browser that
+// cached the month view would otherwise be served it for the now view.
+type cachedView struct {
+	snapshot []byte
+	etag     string
+}
+
 // Handler serves the inventory HTTP API (§17).
 type Handler struct {
-	idx            *index.ObservationIndex
-	normalizer     *normalizer.Normalizer
-	promClient     *prometheus.Client
-	stateStore     *state.Store
-	publisher      *confluence.Publisher // nil if Confluence not configured
-	uiPassword     string                // simple password gate; empty = no auth required
-	confluenceURL  string
-	snapshotMu     sync.Mutex // serializes refresh
-	publishMu      sync.Mutex // serializes publication
-	cachedSnapshot []byte
-	cachedEtag     string
-	cacheMu        sync.RWMutex
-	lastRefresh    time.Time
-	logger         *slog.Logger
+	idx           *index.ObservationIndex
+	normalizer    *normalizer.Normalizer
+	promClient    *prometheus.Client
+	stateStore    *state.Store
+	publisher     *confluence.Publisher // nil if Confluence not configured
+	uiPassword    string                // simple password gate; empty = no auth required
+	confluenceURL string
+	snapshotMu    sync.Mutex // serializes refresh
+	publishMu     sync.Mutex // serializes publication
+	views         map[string]cachedView
+	cacheMu       sync.RWMutex
+	lastRefresh   time.Time
+	logger        *slog.Logger
 }
 
 // NewHandler creates a new API handler. publisher may be nil if Confluence is not configured.
@@ -53,13 +60,14 @@ func NewHandler(
 		publisher:     publisher,
 		uiPassword:    uiPassword,
 		confluenceURL: confluenceURL,
+		views:         make(map[string]cachedView),
 		logger:        logger,
 	}
 }
 
 // MarkRefreshed updates the cache timestamp after a background refresh.
 func (h *Handler) MarkRefreshed() {
-	h.rebuildSnapshot()
+	h.rebuildViews()
 	h.lastRefresh = time.Now()
 }
 
@@ -73,6 +81,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // GET /api/inventory (§17.2) — returns normalized JSON with ETag support (§17.6).
+// The optional ?window= parameter selects the view window (§15.1).
 func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -83,42 +92,63 @@ func (h *Handler) handleInventory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use cached snapshot if available; rebuild only when stale.
+	name := r.URL.Query().Get("window")
+	if name == "" {
+		name = shared.UIWindowNames[0]
+	}
+	window, ok := shared.ParseUIWindow(name)
+	if !ok {
+		http.Error(w, `{"error":"unknown_window"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Use the cached rendering if available; rebuild only when it is missing.
 	h.cacheMu.RLock()
-	snapshot := h.cachedSnapshot
-	etag := h.cachedEtag
+	view, cached := h.views[name]
 	h.cacheMu.RUnlock()
 
-	if snapshot == nil {
-		snapshot, etag = h.rebuildSnapshot()
+	if !cached {
+		view = h.rebuildView(name, window)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("ETag", etag)
+	w.Header().Set("ETag", view.etag)
 
-	if match := r.Header.Get("If-None-Match"); match == etag && etag != "" {
+	if match := r.Header.Get("If-None-Match"); match == view.etag && view.etag != "" {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 
-	w.Write(snapshot)
+	w.Write(view.snapshot)
 }
 
-func (h *Handler) rebuildSnapshot() ([]byte, string) {
-	s := h.normalizer.BuildUISnapshot()
-	data, err := json.Marshal(s)
-	if err != nil {
-		h.logger.Error("failed to marshal inventory snapshot", "error", err)
-		return nil, ""
+// rebuildViews re-renders every window. A refresh changes what all of them
+// hold, so they are rebuilt together rather than left to go stale until
+// somebody happens to ask for them.
+func (h *Handler) rebuildViews() {
+	for _, name := range shared.UIWindowNames {
+		if window, ok := shared.ParseUIWindow(name); ok {
+			h.rebuildView(name, window)
+		}
 	}
-	etag := fmt.Sprintf(`"%x"`, sha256.Sum256(data))
+}
+
+func (h *Handler) rebuildView(name string, window time.Duration) cachedView {
+	data, err := json.Marshal(h.normalizer.BuildUISnapshot(window))
+	if err != nil {
+		h.logger.Error("failed to marshal inventory snapshot", "window", name, "error", err)
+		return cachedView{}
+	}
+	view := cachedView{
+		snapshot: data,
+		etag:     fmt.Sprintf(`"%x"`, sha256.Sum256(data)),
+	}
 
 	h.cacheMu.Lock()
-	h.cachedSnapshot = data
-	h.cachedEtag = etag
+	h.views[name] = view
 	h.cacheMu.Unlock()
 
-	return data, etag
+	return view
 }
 
 // GET /api/status (§17.3) — returns cache and publication status.
@@ -223,8 +253,8 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		return st, nil
 	})
 
-	// Rebuild cached snapshot after refresh.
-	h.rebuildSnapshot()
+	// Rebuild cached snapshots after refresh.
+	h.rebuildViews()
 	h.lastRefresh = time.Now()
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

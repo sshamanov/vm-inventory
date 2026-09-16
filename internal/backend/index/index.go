@@ -258,6 +258,57 @@ func (idx *ObservationIndex) UpsertResource(record prometheus.ResourceInfoRecord
 	}
 }
 
+// BackfillHost records a host observation that was collected in the past, and
+// reports whether it changed anything. Unlike UpsertHost it never applies an
+// older observation over a newer one: the backfill runs concurrently with the
+// live refresh, and its record carries the labels of whichever series was live
+// at the time — a kernel upgrade re-labels the series — so writing it over a
+// running host would misreport its OS. It only ever creates a retired entry or
+// advances one already known.
+func (idx *ObservationIndex) BackfillHost(record prometheus.HostInfoRecord, lastSeen time.Time) bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	existing, ok := idx.hosts[record.HostID]
+	if !ok {
+		idx.hosts[record.HostID] = &HostObservation{
+			Record:    record,
+			LastSeen:  lastSeen,
+			RefreshID: lastSeen.Format(time.RFC3339Nano),
+		}
+		return true
+	}
+	if lastSeen.After(existing.LastSeen) {
+		existing.Record = record
+		existing.LastSeen = lastSeen
+		return true
+	}
+	return false
+}
+
+// BackfillResource records a resource observation that was collected in the
+// past. It carries the same guard as BackfillHost.
+func (idx *ObservationIndex) BackfillResource(record prometheus.ResourceInfoRecord, lastSeen time.Time) bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	existing, ok := idx.resources[record.InventoryID]
+	if !ok {
+		idx.resources[record.InventoryID] = &ResourceObservation{
+			StableID: record.InventoryID,
+			Record:   record,
+			LastSeen: lastSeen,
+		}
+		return true
+	}
+	if lastSeen.After(existing.LastSeen) {
+		existing.Record = record
+		existing.LastSeen = lastSeen
+		return true
+	}
+	return false
+}
+
 // GetHostsByGeo returns all hosts within a given liveness window, grouped by geo.
 func (idx *ObservationIndex) GetHostsByGeo(now time.Time, window time.Duration) map[string][]*HostObservation {
 	idx.mu.RLock()

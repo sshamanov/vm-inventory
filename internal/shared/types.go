@@ -228,3 +228,36 @@ const (
 	DiskGroupingTolerance      = 0.08
 	MaxDescriptionBytes        = 1024
 )
+
+// UI view windows (§15.1). The switch picks how far back the inventory looks;
+// UILivenessWindow alone decides which of the items found are still current, so
+// widening the view never makes a departed instance read as live.
+const (
+	UIWindowNow   = 1 * time.Hour
+	UIWindowMonth = 30 * 24 * time.Hour
+	UIWindowAll   = 365 * 24 * time.Hour
+
+	// RetentionWindow is how long the observation index keeps a retired
+	// instance: the widest view plus a day of slack, so an instance survives
+	// until the last day the "all" view could ask for it.
+	RetentionWindow = UIWindowAll + 24*time.Hour
+)
+
+// UIWindowNames lists the view names in the order the switch presents them.
+// "now" is the default view.
+var UIWindowNames = []string{"now", "month", "all"}
+
+// ParseUIWindow resolves a view name to its lookback. The empty name is "now",
+// so a request without the parameter keeps the meaning it had before the switch
+// existed.
+func ParseUIWindow(name string) (time.Duration, bool) {
+	switch name {
+	case "", "now":
+		return UIWindowNow, true
+	case "month":
+		return UIWindowMonth, true
+	case "all":
+		return UIWindowAll, true
+	}
+	return 0, false
+}

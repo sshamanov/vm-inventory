@@ -3,6 +3,7 @@ package prometheus
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"vm-inventory/internal/shared"
 )
@@ -14,9 +15,64 @@ func QueryAllInventory() string {
 	return `{__name__=~"inventory_.+"}`
 }
 
-// QueryAllInventoryRange returns all inventory metrics over a time range.
-func QueryAllInventoryRange(lookback string) string {
-	return fmt.Sprintf(`{__name__=~"inventory_.+"}[%s]`, lookback)
+// QueryLastSeen returns, for every series of metric sampled at any point in the
+// lookback, the timestamp of its newest sample. It answers "when was this
+// instance last collected", which is what a retired entry is labelled with
+// (§15.4).
+//
+// timestamp() sits inside a subquery because the obvious alternative does not
+// work: last_over_time reports the time of the *evaluation*, not of the last
+// sample, so it dates a series that stopped a month ago to now. A subquery
+// costs one evaluation per series per step, so a long lookback needs a coarse
+// step — see LastSeenStep.
+func QueryLastSeen(metric string, lookback, step time.Duration) string {
+	return fmt.Sprintf(`max_over_time(timestamp(%s)[%s:%s])`,
+		metric, promDuration(lookback), promDuration(step))
+}
+
+// LastSeenStep picks the coarsest whole-hour step that keeps a lookback within
+// maxSteps subquery evaluations. A year of hourly steps across every resource
+// series runs past the Prometheus client's timeout; the same year at a 48-hour
+// step finishes in seconds, dating an old departure only to the day it was
+// collected.
+func LastSeenStep(lookback time.Duration, maxSteps int) time.Duration {
+	if maxSteps < 1 {
+		maxSteps = 1
+	}
+	step := lookback / time.Duration(maxSteps)
+	step = ((step + time.Hour - 1) / time.Hour) * time.Hour
+	if step < time.Hour {
+		return time.Hour
+	}
+	return step
+}
+
+// promDuration formats a duration as a PromQL literal. Go's own formatting
+// ("720h0m0s") is legal PromQL but reads far worse than the "30d" these
+// queries are reasoned about in.
+func promDuration(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	var b strings.Builder
+	for _, u := range []struct {
+		suffix string
+		unit   time.Duration
+	}{
+		{"d", 24 * time.Hour},
+		{"h", time.Hour},
+		{"m", time.Minute},
+		{"s", time.Second},
+	} {
+		if n := d / u.unit; n > 0 {
+			fmt.Fprintf(&b, "%d%s", n, u.suffix)
+			d -= n * u.unit
+		}
+	}
+	if b.Len() == 0 {
+		return "1s"
+	}
+	return b.String()
 }
 
 // QueryHostInfo returns all host identity records.

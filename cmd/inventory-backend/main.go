@@ -12,6 +12,7 @@ import (
 	"vm-inventory/internal/backend"
 	"vm-inventory/internal/backend/api"
 	"vm-inventory/internal/backend/confluence"
+	"vm-inventory/internal/backend/history"
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
@@ -115,7 +116,9 @@ func main() {
 	refreshCtx, refreshCancel := context.WithCancel(context.Background())
 	defer refreshCancel()
 
-	// Background pruning of stale observations every hour.
+	// Background pruning of stale observations every hour. The window is the
+	// retention window, not the UI's: an instance has to survive in the index
+	// for as long as the widest view can ask for it.
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
@@ -126,10 +129,22 @@ func main() {
 			case <-ticker.C:
 			}
 			before := obsIndex.HostCount() + obsIndex.ResourceCount()
-			obsIndex.Prune(24 * time.Hour)
+			obsIndex.Prune(shared.RetentionWindow)
 			after := obsIndex.HostCount() + obsIndex.ResourceCount()
 			logger.Debug("pruned stale observations", "before", before, "after", after)
 		}
+	}()
+
+	// Backfill instances that were collected in the past and have since gone
+	// away, so the wider views have something to dim. This is several Prometheus
+	// subqueries over the retention window; the UI serves from the index while
+	// they run and picks up what they find when the rebuild below lands (§15.4).
+	go func() {
+		history.Backfill(refreshCtx, promClient, obsIndex, logger)
+		handler.MarkRefreshed()
+		logger.Info("history backfill complete",
+			"hosts", obsIndex.HostCount(), "resources", obsIndex.ResourceCount(),
+		)
 	}()
 
 	// Background refresh loop with graceful shutdown (§14.5).

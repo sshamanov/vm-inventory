@@ -289,6 +289,26 @@ select:focus {
 .btn-icon:hover { background: var(--surface-2); border-color: var(--rule); color: var(--signal); }
 .btn-icon svg { width: 15px; height: 15px; }
 
+/* The view window switch reads as one control rather than three buttons: a
+   single border with the segments flush inside it, so the selected window is
+   the only thing that carries colour. */
+.seg {
+  display: flex; align-items: stretch;
+  border: 1px solid var(--hair); border-radius: 2px;
+  overflow: hidden;
+}
+.seg-btn {
+  font-family: var(--font-mono); font-size: .7rem; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase;
+  padding: 8px 11px; border: 0; border-left: 1px solid var(--hair);
+  background: var(--surface); color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.seg-btn:first-child { border-left: 0; }
+.seg-btn:hover { background: var(--surface-2); color: var(--ink); }
+.seg-btn.is-on,
+.seg-btn.is-on:hover { background: var(--signal); color: var(--on-signal); }
+
 html[data-theme="light"] .ico-moon { display: none; }
 html[data-theme="dark"]  .ico-sun  { display: none; }
 
@@ -638,6 +658,12 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background .12s; }
 tbody tr:hover td { background: var(--surface-2); }
 tbody tr:hover td:first-child { box-shadow: inset 2px 0 0 var(--signal); }
+
+/* A resource that has stopped being collected is dimmed in place, the way a
+   retired host's card is. Hover restores it, so a dimmed row can still be read
+   without switching the view back. */
+tbody tr[data-state="retained"] { opacity: .55; }
+tbody tr[data-state="retained"]:hover { opacity: 1; }
 
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.mono { font-family: var(--font-mono); font-size: .72rem; }

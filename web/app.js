@@ -6,14 +6,18 @@ let geoFilter = "";
 let hostFilter = "";
 let vmSort = { col: "name", asc: true };
 let authToken = "";
+let windowName = "now";
 
 const THEME_KEY = "inv-theme";
+const WINDOW_KEY = "inv-window";
+const WINDOWS = ["now", "month", "all"];
 
 // --- Init ---
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initScroll();
+  initWindowSwitch();
   authToken = localStorage.getItem("inv-auth") || "";
   if (!authToken) {
     showLogin();
@@ -85,6 +89,35 @@ function initScroll() {
   apply();
 }
 
+// --- View window ---
+
+// The switch chooses how far back the inventory looks. Each window is a
+// separate snapshot on the backend — "now" does not contain what "month" does —
+// so switching refetches rather than filtering what is already on the page.
+function initWindowSwitch() {
+  let stored = null;
+  try { stored = localStorage.getItem(WINDOW_KEY); } catch (e) { /* private mode */ }
+  if (WINDOWS.indexOf(stored) >= 0) windowName = stored;
+  syncWindowSwitch();
+
+  document.getElementById("window-switch").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-window]");
+    if (!btn || btn.dataset.window === windowName) return;
+    windowName = btn.dataset.window;
+    try { localStorage.setItem(WINDOW_KEY, windowName); } catch (err) { /* ignore */ }
+    syncWindowSwitch();
+    loadInventory();
+  });
+}
+
+function syncWindowSwitch() {
+  for (const btn of document.querySelectorAll("#window-switch button[data-window]")) {
+    const on = btn.dataset.window === windowName;
+    btn.classList.toggle("is-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+
 // --- Auth ---
 
 function showLogin() {
@@ -130,7 +163,7 @@ function authHeaders() {
 async function loadInventory() {
   showLoading(true);
   try {
-    const resp = await fetch("/api/inventory", { headers: authHeaders() });
+    const resp = await fetch(`/api/inventory?window=${encodeURIComponent(windowName)}`, { headers: authHeaders() });
     if (!resp.ok) {
       if (resp.status === 401) { localStorage.removeItem("inv-auth"); showLogin(); return; }
       throw new Error(`HTTP ${resp.status}`);
@@ -546,6 +579,14 @@ function setCaption(section, shown, total) {
   if (cap) cap.textContent = countLabel(shown, total);
 }
 
+// silent counts the entries a wider view carries that are no longer being
+// collected. They are part of the view, so they are counted, but each tile says
+// how many of its number is history rather than reading as a live fleet size.
+function silent(items) {
+  const n = items.filter(i => i.observation_state === "retained").length;
+  return n ? ` · ${n} not collected` : "";
+}
+
 function renderStats(geos, hosts, vms, cts) {
   const rail = document.getElementById("stats");
   const esxi = hosts.filter(h => hostRole(h) === "esxi").length;
@@ -553,9 +594,9 @@ function renderStats(geos, hosts, vms, cts) {
   const esxiVMs = vms.filter(v => v.platform === "ESXi").length;
 
   const stats = [
-    { label: "Hosts", value: hosts.length, note: `${esxi} esxi · ${hosts.length - esxi} linux` },
-    { label: "Virtual machines", value: vms.length, note: `${kvmCount} kvm · ${esxiVMs} esxi` },
-    { label: "Containers", value: cts.length, note: cts.length ? "lxd" : "none observed" },
+    { label: "Hosts", value: hosts.length, note: `${esxi} esxi · ${hosts.length - esxi} linux${silent(hosts)}` },
+    { label: "Virtual machines", value: vms.length, note: `${kvmCount} kvm · ${esxiVMs} esxi${silent(vms)}` },
+    { label: "Containers", value: cts.length, note: (cts.length ? "lxd" : "none observed") + silent(cts) },
     { label: "Geos", value: geos.length, note: geos.map(g => g.name).join(" · ") },
   ];
 
@@ -685,6 +726,8 @@ function hostCardBody(host, perHost, ctPerHost, poolSlots) {
         title += ` · hugepage free ${formatBytes(m.hp)}`;
       }
       meters.push(meterRow("RAM", m.u, m.h, label, title));
+    } else {
+      meters.push(meterNote("RAM", `${formatBytes(host.memory.total_bytes)} total · usage not reported`));
     }
   }
 
@@ -825,7 +868,7 @@ function buildTable(kind, rows, total) {
 function vmRow(vm) {
   const label = vm.title || vm.name;
   const ips = (vm.ips || []).join(", ");
-  return `<tr>` +
+  return `<tr${rowState(vm)}>` +
     `<td class="mono">${esc(vm.host_id)}</td>` +
     `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}${staleMark(vm)}</td>` +
     `<td>${esc(vm.platform)}</td>` +
@@ -841,7 +884,7 @@ function vmRow(vm) {
 
 function ctRow(ct) {
   const ips = (ct.ips || []).join(", ");
-  return `<tr>` +
+  return `<tr${rowState(ct)}>` +
     `<td class="mono">${esc(ct.host_id)}</td>` +
     `<td class="strong">${esc(ct.name)}${staleMark(ct)}</td>` +
     `<td>${esc(ct.geo || "—")}</td>` +
@@ -862,6 +905,12 @@ function countLabel(shown, total) {
 function staleMark(res) {
   if (res.observation_state !== "retained") return "";
   return ` <span class="host-stale">last seen ${esc(timeAgo(res.last_seen) || "unknown")}</span>`;
+}
+
+// rowState marks a retired resource so the stylesheet can dim its row, the way
+// a retired host's card is dimmed.
+function rowState(res) {
+  return res.observation_state === "retained" ? ` data-state="retained"` : "";
 }
 
 // --- Search ---
@@ -965,6 +1014,10 @@ function round(v, dp) {
 function memBands(mem) {
   const total = mem.total_bytes || 0;
   if (!total) return null;
+  // A host outside the freshness window keeps its capacity but loses its usage
+  // reading (§15.3). With no reading there is no band to draw, and the card
+  // says so rather than filling the meter from a zero it would have to invent.
+  if (mem.used_bytes == null && mem.available_bytes == null) return null;
   const used = mem.used_bytes != null ? mem.used_bytes : Math.max(0, total - (mem.available_bytes || 0));
   const avail = mem.available_bytes != null ? mem.available_bytes : Math.max(0, total - used);
   const hp = mem.hugepages_free_bytes || 0;

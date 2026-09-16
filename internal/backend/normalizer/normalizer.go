@@ -22,14 +22,17 @@ func New(idx *index.ObservationIndex) *Normalizer {
 	return &Normalizer{idx: idx}
 }
 
-// BuildUISnapshot builds the 1-hour UI snapshot (§15.1, §17.2).
-func (n *Normalizer) BuildUISnapshot() *shared.NormalizedInventory {
+// BuildUISnapshot builds the UI snapshot for one view window (§15.1, §17.2).
+// The window decides how far back the snapshot looks; which of the instances it
+// finds count as current is fixed at UILivenessWindow, so asking for a wider
+// view never makes a departed instance read as live.
+func (n *Normalizer) BuildUISnapshot(window time.Duration) *shared.NormalizedInventory {
 	now := time.Now().Truncate(time.Second) // stable within same second
 
-	hostsByGeo := n.idx.GetHostsByGeo(now, shared.UILivenessWindow)
-	resByHost := n.idx.GetResourcesByHost(now, shared.UILivenessWindow)
+	hostsByGeo := n.idx.GetHostsByGeo(now, window)
+	resByHost := n.idx.GetResourcesByHost(now, window)
 
-	geos := n.buildGeos(hostsByGeo, resByHost, now, shared.UILivenessWindow)
+	geos := n.buildGeos(hostsByGeo, resByHost, now)
 
 	// Sort geos case-insensitively.
 	sort.Slice(geos, func(i, j int) bool {
@@ -50,7 +53,7 @@ func (n *Normalizer) BuildConfluenceSnapshot() *shared.NormalizedInventory {
 	hostsByGeo := n.idx.GetHostsByGeo(now, shared.ConfluenceLivenessWindow)
 	resByHost := n.idx.GetResourcesByHost(now, shared.ConfluenceLivenessWindow)
 
-	geos := n.buildGeos(hostsByGeo, resByHost, now, shared.ConfluenceLivenessWindow)
+	geos := n.buildGeos(hostsByGeo, resByHost, now)
 	sort.Slice(geos, func(i, j int) bool {
 		return sortStringsInsensitive(geos[i].Name, geos[j].Name)
 	})
@@ -66,7 +69,6 @@ func (n *Normalizer) buildGeos(
 	hostsByGeo map[string][]*index.HostObservation,
 	resByHost map[string][]*index.ResourceObservation,
 	now time.Time,
-	window time.Duration,
 ) []shared.Geo {
 	var geos []shared.Geo
 
@@ -80,11 +82,22 @@ func (n *Normalizer) buildGeos(
 				hostIPs = append(hostIPs, ip.Address)
 			}
 
-		totalMem := int64(obs.MemoryTotal)
-			availMem := int64(obs.MemoryAvail)
-			usedMem := totalMem - availMem
-			if usedMem < 0 {
-				usedMem = 0
+			// A host that has stopped reporting keeps its last memory reading in
+			// the index, so usage has to be checked against the freshness window
+			// rather than the view window: rendering a retired host's last known
+			// free memory as a live gauge is exactly the reading §15.3 forbids.
+			fresh := index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow)
+
+			totalMem := int64(obs.MemoryTotal)
+			memory := shared.MemoryInfo{TotalBytes: totalMem}
+			if fresh {
+				availMem := int64(obs.MemoryAvail)
+				usedMem := totalMem - availMem
+				if usedMem < 0 {
+					usedMem = 0
+				}
+				memory.AvailableBytes = &availMem
+				memory.UsedBytes = &usedMem
 			}
 			host := shared.Host{
 				ID:               obs.Record.HostID,
@@ -103,15 +116,11 @@ func (n *Normalizer) buildGeos(
 					Cores:   int(obs.CPUCores),
 					Threads: int(obs.CPUThreads),
 				},
-				Memory: shared.MemoryInfo{
-					TotalBytes:     totalMem,
-					AvailableBytes: &availMem,
-					UsedBytes:      &usedMem,
-				},
-				ObservationState: index.ObservationState(obs.LastSeen, now, window),
+				Memory:           memory,
+				ObservationState: index.ObservationState(obs.LastSeen, now, shared.UILivenessWindow),
 			}
 
-			if obs.CPUUsage > 0 && index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
+			if fresh && obs.CPUUsage > 0 {
 				usage := obs.CPUUsage
 				threads := float64(obs.CPUThreads)
 				if threads > 0 {
@@ -129,17 +138,19 @@ func (n *Normalizer) buildGeos(
 			for pageSize, total := range obs.HugepagesTotal {
 				var ps int64
 				fmt.Sscanf(pageSize, "%d", &ps)
-				free := obs.HugepagesFree[pageSize]
-				hpTotal += int64(total)
-				hpFree += int64(free)
-				hugepages = append(hugepages, shared.HugepagePool{
+				pool := shared.HugepagePool{
 					PageSizeBytes: ps,
 					TotalBytes:    int64(total),
-					FreeBytes:     &[]int64{int64(free)}[0],
-				})
+				}
+				if fresh {
+					pool.FreeBytes = int64Ptr(int64(obs.HugepagesFree[pageSize]))
+				}
+				hpTotal += int64(total)
+				hpFree += int64(obs.HugepagesFree[pageSize])
+				hugepages = append(hugepages, pool)
 			}
 			host.Memory.HugepagesTotalBytes = hpTotal
-			if hpFree > 0 {
+			if fresh && hpFree > 0 {
 				host.Memory.HugepagesFreeBytes = &hpFree
 			}
 			host.Memory.Hugepages = hugepages
@@ -164,21 +175,23 @@ func (n *Normalizer) buildGeos(
 				if p.PoolName == "default" && strings.HasPrefix(p.PoolType, "libvirt-") {
 					continue
 				}
-				avail := int64(p.AvailBytes)
-				host.StoragePools = append(host.StoragePools, shared.StoragePool{
-					PoolID:         p.PoolID,
-					PoolName:       p.PoolName,
-					PoolType:       p.PoolType,
-					TotalBytes:     int64(p.TotalBytes),
-					AvailableBytes: &avail,
-				})
+				pool := shared.StoragePool{
+					PoolID:     p.PoolID,
+					PoolName:   p.PoolName,
+					PoolType:   p.PoolType,
+					TotalBytes: int64(p.TotalBytes),
+				}
+				if fresh {
+					pool.AvailableBytes = int64Ptr(int64(p.AvailBytes))
+				}
+				host.StoragePools = append(host.StoragePools, pool)
 			}
 			// Only show filesystems when there are no platform storage pools.
 			if !hasPools {
-				host.Filesystems = dedupFilesystems(obs.Filesystems, now, shared.UILivenessWindow)
+				host.Filesystems = dedupFilesystems(obs.Filesystems, fresh)
 			}
 
-			if !index.IsUsageFresh(obs.LastSeen, now, shared.UILivenessWindow) {
+			if !fresh {
 				host.LastSeen = &obs.LastSeen
 			}
 
@@ -193,7 +206,23 @@ func (n *Normalizer) buildGeos(
 		// Collect resources belonging to hosts in this geo.
 		for _, host := range geo.Hosts {
 			resources := resByHost[host.ID]
+			// An instance whose platform source id changed keeps running under
+			// the new identity while the old one is left behind as a departed
+			// series (§15.1). Drawing both would report a departure that never
+			// happened, so a retired resource is dropped where a current one of
+			// the same kind and name is present on the same host. A resource
+			// that moved to another host still shows as retired where it left.
+			current := make(map[string]bool, len(resources))
 			for _, res := range resources {
+				if index.IsUsageFresh(res.LastSeen, now, shared.UILivenessWindow) {
+					current[resourceKey(res.Record)] = true
+				}
+			}
+			for _, res := range resources {
+				fresh := index.IsUsageFresh(res.LastSeen, now, shared.UILivenessWindow)
+				if !fresh && current[resourceKey(res.Record)] {
+					continue
+				}
 				switch res.Record.Kind {
 				case shared.KindLibvirtVM, shared.KindEsxiVM:
 					var ips []string
@@ -218,14 +247,14 @@ func (n *Normalizer) buildGeos(
 						CapacitySourceCPU:    shared.CapacityConfigured,
 						CapacitySourceRAM:    shared.CapacityConfigured,
 						CapacitySourceDisk:   shared.CapacityConfigured,
-						ObservationState: index.ObservationState(res.LastSeen, now, window),
+						ObservationState: index.ObservationState(res.LastSeen, now, shared.UILivenessWindow),
 					}
 					if res.Record.Kind == shared.KindLibvirtVM {
 						vm.Platform = "KVM"
 					} else {
 						vm.Platform = "ESXi"
 					}
-					if !index.IsUsageFresh(res.LastSeen, now, shared.UILivenessWindow) {
+					if !fresh {
 						vm.LastSeen = &res.LastSeen
 					}
 					geo.VirtualMachines = append(geo.VirtualMachines, vm)
@@ -252,9 +281,9 @@ func (n *Normalizer) buildGeos(
 						CapacitySourceCPU:    shared.CapacityConfigured,
 						CapacitySourceRAM:    shared.CapacityConfigured,
 						CapacitySourceDisk:   shared.CapacityConfigured,
-						ObservationState: index.ObservationState(res.LastSeen, now, window),
+						ObservationState: index.ObservationState(res.LastSeen, now, shared.UILivenessWindow),
 					}
-					if !index.IsUsageFresh(res.LastSeen, now, shared.UILivenessWindow) {
+					if !fresh {
 						container.LastSeen = &res.LastSeen
 					}
 					geo.LXDContainers = append(geo.LXDContainers, container)
@@ -266,6 +295,12 @@ func (n *Normalizer) buildGeos(
 	}
 
 	return geos
+}
+
+// resourceKey identifies a resource by what survives a re-labelling: the host it
+// sits on (implicit — resources are grouped per host), its kind and its name.
+func resourceKey(rec prometheus.ResourceInfoRecord) string {
+	return rec.Kind + "\x00" + rec.Name
 }
 
 func sortStringsInsensitive(a, b string) bool {
@@ -321,8 +356,10 @@ func groupDisks(devices []prometheus.BlockDeviceRecord) []shared.DiskGroup {
 	return groups
 }
 
-// dedupFilesystems merges filesystem records by filesystem_id (§16.4).
-func dedupFilesystems(records []prometheus.FilesystemRecord, now time.Time, window time.Duration) []shared.Filesystem {
+// dedupFilesystems merges filesystem records by filesystem_id (§16.4). Capacities
+// survive a host going away; the free space reading does not, so it is dropped
+// for a host outside the freshness window.
+func dedupFilesystems(records []prometheus.FilesystemRecord, fresh bool) []shared.Filesystem {
 	byID := make(map[string]*shared.Filesystem)
 	var order []string
 	for _, r := range records {
@@ -338,9 +375,8 @@ func dedupFilesystems(records []prometheus.FilesystemRecord, now time.Time, wind
 		if r.TotalBytes > 0 {
 			fs.TotalBytes = int64(r.TotalBytes)
 		}
-		if r.AvailBytes > 0 {
-			avail := int64(r.AvailBytes)
-			fs.AvailableBytes = &avail
+		if fresh && r.AvailBytes > 0 {
+			fs.AvailableBytes = int64Ptr(int64(r.AvailBytes))
 		}
 		if r.Mountpoint != "" {
 			fs.Mountpoints = append(fs.Mountpoints, r.Mountpoint)
