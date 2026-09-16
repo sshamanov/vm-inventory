@@ -3,6 +3,10 @@
    A calibration-record aesthetic: hairline rules, ruler ticks, monospaced
    readouts, segmented meters, platform-coloured spines.
 
+   The palette is cold on purpose — violet, blue, green. Warm accents (reds,
+   oranges, ambers) read as alarms on a board operators scan for trouble, and
+   a fleet that is merely busy would look like it is failing.
+
    Plain CSS, no build step (§17). Fonts are self-hosted — the app must work
    on a trusted internal network that may have no route to the public web.
    ========================================================================== */
@@ -27,75 +31,79 @@
 :root {
   color-scheme: light;
 
-  --paper:     #f0ede5;
-  --surface:   #fbfaf6;
-  --surface-2: #f5f3ec;
+  --paper:     #eef1f7;
+  --surface:   #fafbfe;
+  --surface-2: #f1f4fa;
 
-  --ink:       #17191b;
-  --ink-2:     #4b4e51;
-  --muted:     #7c7a72;
-  --faint:     #a5a297;
+  --ink:       #141821;
+  --ink-2:     #454e5e;
+  --muted:     #6a7484;
+  --faint:     #9aa3b2;
 
-  --hair:      #d8d3c5;
-  --hair-2:    #e7e3d9;
-  --rule:      #b6b0a0;
+  --hair:      #d5dbe6;
+  --hair-2:    #e5eaf2;
+  --rule:      #aab4c6;
 
-  --signal:    #cc4718;
-  --signal-2:  #ab3a11;
-  --on-signal: #fff9f5;
+  --signal:    #5b3fd6;
+  --signal-2:  #4a30bd;
+  --on-signal: #f5f4ff;
 
-  --used:      #cc4420;
-  --free:      #2e8a6a;
-  --huge:      #b98a1e;
-  --unlit:     #e3dfd4;
+  --used:      #5866d8;
+  --free:      #2f8f6b;
+  --huge:      #2f8fc4;
+  --unlit:     #dde3ec;
 
-  --spine-kvm:  #cc4718;
-  --spine-lxd:  #2e8a6a;
-  --spine-esxi: #37679b;
-  --spine-host: #8d8a80;
+  --spine-kvm:  #5b3fd6;
+  --spine-lxd:  #1f8f6b;
+  --spine-esxi: #2f6fb8;
+  --spine-host: #8b95a5;
 
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237c7a72' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
-  --grain-opacity: .16;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236a7484' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --grain-opacity: .13;
+
+  /* Updated from JS to the live masthead height, so the sticky table header
+     parks under the masthead instead of sliding behind it. */
+  --masthead-h: 62px;
 
   --font-display: 'Archivo', ui-sans-serif, system-ui, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --shadow-card: 0 1px 0 rgba(23,25,27,.03), 0 10px 22px -19px rgba(23,25,27,.55);
-  --shadow-pop:  0 20px 44px -22px rgba(23,25,27,.45);
+  --shadow-card: 0 1px 0 rgba(12,16,26,.03), 0 10px 22px -19px rgba(12,16,26,.5);
+  --shadow-pop:  0 20px 44px -22px rgba(12,16,26,.4);
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --paper:     #0e1012;
-  --surface:   #171a1e;
-  --surface-2: #1d2126;
+  --paper:     #0b0e13;
+  --surface:   #131822;
+  --surface-2: #1a202b;
 
-  --ink:       #e9e5db;
-  --ink-2:     #b0afa7;
-  --muted:     #83857f;
-  --faint:     #6c6e69;
+  --ink:       #e8ecf4;
+  --ink-2:     #aeb7c6;
+  --muted:     #7e889a;
+  --faint:     #646e80;
 
-  --hair:      #2b3036;
-  --hair-2:    #23272c;
-  --rule:      #3b4147;
+  --hair:      #262e3b;
+  --hair-2:    #1e2531;
+  --rule:      #3a4453;
 
-  --signal:    #ff6a35;
-  --signal-2:  #ff8757;
-  --on-signal: #1b0d05;
+  --signal:    #8f7bff;
+  --signal-2:  #a693ff;
+  --on-signal: #0c0a1a;
 
-  --used:      #e2542a;
-  --free:      #3fae86;
-  --huge:      #d8a13a;
-  --unlit:     #242a30;
+  --used:      #7b8cff;
+  --free:      #3fbd8f;
+  --huge:      #46b0e0;
+  --unlit:     #212936;
 
-  --spine-kvm:  #ff6a35;
-  --spine-lxd:  #3fae86;
-  --spine-esxi: #6f9fd8;
-  --spine-host: #7b7d78;
+  --spine-kvm:  #8f7bff;
+  --spine-lxd:  #3fbd8f;
+  --spine-esxi: #6aa8e8;
+  --spine-host: #79839a;
 
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2383857f' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
-  --grain-opacity: .11;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237e889a' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --grain-opacity: .09;
 
   --shadow-card: 0 1px 0 rgba(0,0,0,.45), 0 12px 26px -20px #000;
   --shadow-pop:  0 22px 48px -24px #000;
@@ -311,7 +319,6 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 }
 .spec-link:hover { border-bottom-color: currentColor; }
 .spec-link .ico-ext { width: 10px; height: 10px; }
-.spec .btn-icon { margin-left: 2px; }
 
 /* Compact the masthead once the page is scrolled. */
 .masthead.is-scrolled .brand-sub { display: none; }
@@ -364,15 +371,26 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 .geo { margin-bottom: 34px; }
 
 .geo-head {
-  display: flex; align-items: baseline; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   padding-bottom: 8px; margin-bottom: 14px;
   border-bottom: 1px solid var(--rule);
 }
-.geo-fig {
+
+/* Fold controls: one chevron per collapsible block — each geo's host grid and
+   each resource table — so a section can be tucked away instead of scrolled
+   past. */
+.fold {
   flex: none;
-  font-family: var(--font-mono); font-size: .6rem;
-  letter-spacing: .16em; color: var(--signal);
+  display: grid; place-items: center;
+  width: 20px; height: 20px; padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: 2px;
+  color: var(--muted); cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
 }
+.fold:hover { color: var(--signal); border-color: var(--hair); background: var(--surface-2); }
+.fold-ico { width: 12px; height: 12px; transition: transform .18s cubic-bezier(.2,.75,.2,1); }
+.fold[aria-expanded="false"] .fold-ico { transform: rotate(-90deg); }
+
 .geo-name {
   flex: none; margin: 0;
   font-size: 1rem; font-weight: 800;
@@ -389,8 +407,20 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 }
 
 /* Two columns whenever the viewport can afford them — never three, so the
-   readout stays scannable. */
-.hosts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+   readout stays scannable. `grid-auto-rows: 1fr` gives every row the height of
+   its tallest card, and the card below stretches to fill it, so hosts whose
+   collector reports less (ESXi sends no discs, some hosts report one pool
+   instead of two) keep the same footprint and the grid stays level. */
+.hosts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 12px;
+}
+/* A filter can empty a geo's grid while its resources are still listed in the
+   tables below. `hidden` belongs to the fold control, so emptiness is a
+   separate attribute and the two cannot overwrite each other. */
+.hosts[data-empty="1"] { display: none; }
 @media (min-width: 900px) {
   .hosts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -399,6 +429,10 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 
 .host {
   position: relative;
+  display: flex; flex-direction: column;
+  /* `--host-h` is measured from the tallest card on the board so every geo
+     draws cards of one height; the slack falls at the bottom. */
+  min-height: var(--host-h, 0px);
   padding: 12px 14px 13px 17px;
   background: var(--surface);
   border: 1px solid var(--hair);
@@ -438,11 +472,6 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   padding: 2px 6px; border: 1px solid currentColor; border-radius: 2px;
   color: var(--spine, var(--spine-host));
 }
-.host-idx {
-  margin-left: auto;
-  font-family: var(--font-mono); font-size: .62rem;
-  letter-spacing: .1em; color: var(--faint);
-}
 .host-desc {
   margin: 2px 0 0;
   font-size: .78rem; color: var(--ink-2);
@@ -452,8 +481,9 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   letter-spacing: .12em; text-transform: uppercase; color: var(--huge);
 }
 .host-guests {
+  margin-left: auto;
   font-family: var(--font-mono); font-size: .6rem;
-  letter-spacing: .06em; color: var(--faint);
+  letter-spacing: .06em; color: var(--muted);
 }
 
 .host-body { margin-top: 9px; }
@@ -542,6 +572,9 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   font-family: var(--font-mono); font-size: .66rem;
   color: var(--ink-2); font-variant-numeric: tabular-nums;
 }
+/* A reserved storage slot. It keeps the height a real pool would take without
+   drawing one, so hosts that report fewer pools do not shorten their card. */
+.pool-blank { visibility: hidden; }
 
 .disk-list {
   font-family: var(--font-mono); font-size: .68rem; color: var(--ink-2);
@@ -553,7 +586,7 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 .table-block { margin-bottom: 30px; }
 
 .table-cap {
-  display: flex; align-items: baseline; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   padding-bottom: 8px; margin-bottom: 0;
   border-bottom: 1px solid var(--rule);
 }
@@ -565,18 +598,27 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 .table-cap .geo-rule { flex: 1 1 auto; }
 .table-cap .geo-count { flex: none; }
 
+/* Tables run their full length with the page — no second scrollbar inside the
+   card. Sideways scrolling on narrow viewports is the only reason this is a
+   scroll container at all. */
 .table-scroll {
-  overflow: auto;
-  max-height: min(74vh, 840px);
+  overflow-x: auto;
   border: 1px solid var(--hair);
   border-top: 0;
   background: var(--surface);
 }
 
+/* Once the table fits, the wrapper stops being a scroll container, which is
+   what lets the header stick to the viewport instead of to a box that never
+   scrolls vertically. */
+@media (min-width: 1280px) {
+  .table-scroll { overflow-x: visible; }
+}
+
 table { width: 100%; border-collapse: collapse; font-size: .76rem; }
 
 thead th {
-  position: sticky; top: 0; z-index: 2;
+  position: sticky; top: var(--masthead-h, 62px); z-index: 2;
   background: var(--surface-2);
   font-family: var(--font-mono); font-size: .57rem; font-weight: 500;
   letter-spacing: .14em; text-transform: uppercase; color: var(--muted);

@@ -7,10 +7,6 @@ let hostFilter = "";
 let vmSort = { col: "name", asc: true };
 let authToken = "";
 
-// Entrance animations replay on every render otherwise, which is distracting
-// while typing in the search box. Only the first paint animates.
-let firstPaint = true;
-
 const THEME_KEY = "inv-theme";
 
 // --- Init ---
@@ -26,6 +22,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(loadInventory, 60000);
   }
   document.getElementById("search").addEventListener("input", debounce(onSearch, 200));
+  document.getElementById("geos").addEventListener("click", onFoldClick);
+
+  // The card floor is measured from rendered text, so it has to be taken again
+  // once the real font replaces the fallback and whenever lines re-wrap.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(levelHostHeights);
+  window.addEventListener("resize", debounce(levelHostHeights, 150));
 });
 
 // --- Theme ---
@@ -64,16 +66,22 @@ function initTheme() {
 
 function initScroll() {
   const header = document.getElementById("header");
+  const root = document.documentElement;
   let ticking = false;
   const apply = () => {
     header.classList.toggle("is-scrolled", window.scrollY > 6);
+    // The sticky table header parks under the masthead, which changes height
+    // when it compacts, so the offset is measured rather than hard-coded.
+    root.style.setProperty("--masthead-h", `${header.offsetHeight}px`);
     ticking = false;
   };
-  window.addEventListener("scroll", () => {
+  const queue = () => {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(apply);
-  }, { passive: true });
+  };
+  window.addEventListener("scroll", queue, { passive: true });
+  window.addEventListener("resize", queue);
   apply();
 }
 
@@ -231,103 +239,311 @@ async function doPublish() {
 
 // --- Render ---
 
+// The page is updated in place. Cards and rows are created once and reused, and
+// a filter change only toggles `hidden`. Swapping innerHTML on every keystroke
+// restarted the meter animation, dropped the reading position and flashed the
+// whole board — and it left every gauge empty, because the replacement meters
+// never received the class that fills them.
+const cardEls = new Map();   // host id -> { el, host, geo, sig }
+const geoEls = new Map();    // geo name -> section element
+const tableEls = { vm: null, ct: null };
+const collapsed = new Set(); // folded blocks: "geo:<name>", "table:vm", "table:ct"
+
+let hostsCache = [];
+let vmsCache = [];
+let ctsCache = [];
+let geoOrder = [];
+const resById = new Map();   // inventory id -> resource of the current snapshot
+let vmRows = [];             // [{ el, res }] — the VM table body
+let ctRows = [];
+let vmTableSig = "";
+let ctTableSig = "";
+let statsSig = "";
+let geoOptSig = "";
+let hostOptSig = "";
+let geoSeq = 0;
+
 function render(data) {
   const container = document.getElementById("geos");
   const geos = (data && data.geos) || [];
 
   if (!geos.length) {
     container.innerHTML = "";
+    cardEls.clear();
+    geoEls.clear();
+    tableEls.vm = tableEls.ct = null;
+    hostsCache = []; vmsCache = []; ctsCache = []; geoOrder = [];
+    vmRows = []; ctRows = [];
+    vmTableSig = ctTableSig = statsSig = geoOptSig = hostOptSig = "";
+    geoSeq = 0;
     document.getElementById("empty").hidden = false;
     document.getElementById("no-results").hidden = true;
     document.getElementById("stats").hidden = true;
-    firstPaint = false;
     return;
   }
   document.getElementById("empty").hidden = true;
 
-  // Flatten the snapshot. The API emits null rather than [] for empty
-  // collections, so every list needs a default.
-  const allHosts = [];
-  const allVMs = [];
-  const allLXDs = [];
-  const geoOrder = [];
+  // Flatten the snapshot. The API emits null rather than [] for an empty
+  // collection (§17.2), so every list needs a default.
+  hostsCache = []; vmsCache = []; ctsCache = []; geoOrder = [];
+  resById.clear();
 
   for (const geo of geos) {
     geoOrder.push(geo.name);
-    for (const h of (geo.hosts || [])) { h._geo = geo.name; allHosts.push(h); }
-    for (const vm of (geo.virtual_machines || [])) { vm.geo = vm.geo || geo.name; allVMs.push(vm); }
-    for (const ct of (geo.lxd_containers || [])) { ct.geo = ct.geo || geo.name; allLXDs.push(ct); }
+    for (const h of (geo.hosts || [])) {
+      h._geo = geo.name;
+      h._search = searchText([h.id, h.description, h.hostname, h.os_name, (h.ips || []).join(" ")]);
+      hostsCache.push(h);
+    }
+    for (const vm of (geo.virtual_machines || [])) {
+      vm.geo = vm.geo || geo.name;
+      vm._search = searchText([vm.name, vm.title, vm.description, vm.guest_os, (vm.ips || []).join(" "), vm.host_id]);
+      vmsCache.push(vm);
+      resById.set(vm.inventory_id, vm);
+    }
+    for (const ct of (geo.lxd_containers || [])) {
+      ct.geo = ct.geo || geo.name;
+      ct._search = searchText([ct.name, ct.title, ct.description, ct.guest_os, (ct.ips || []).join(" "), ct.host_id]);
+      ctsCache.push(ct);
+      resById.set(ct.inventory_id, ct);
+    }
   }
 
-  // Resources per host, for the card readout and the role chip.
   const perHost = {};
-  for (const vm of allVMs) { perHost[vm.host_id] = (perHost[vm.host_id] || 0) + 1; }
+  for (const vm of vmsCache) perHost[vm.host_id] = (perHost[vm.host_id] || 0) + 1;
   const ctPerHost = {};
-  for (const ct of allLXDs) { ctPerHost[ct.host_id] = (ctPerHost[ct.host_id] || 0) + 1; }
+  for (const ct of ctsCache) ctPerHost[ct.host_id] = (ctPerHost[ct.host_id] || 0) + 1;
 
-  renderStats(geos, allHosts, allVMs, allLXDs);
-  populateFilters(geoOrder, allHosts);
+  // One storage area height for the whole board, sized by the hungriest host.
+  let poolSlots = 0;
+  for (const h of hostsCache) poolSlots = Math.max(poolSlots, poolRowCount(h));
 
-  // Sorting is shared by both resource tables.
-  allVMs.sort(vmCompare);
-  allLXDs.sort(vmCompare);
+  renderStats(geos, hostsCache, vmsCache, ctsCache);
+  populateFilters(geoOrder, hostsCache);
 
+  const live = new Set();
+
+  for (const geoName of geoOrder) {
+    const section = ensureGeo(geoName);
+    const grid = section.querySelector(".hosts");
+    // Busiest machine first: the board answers "where is everything". Confluence
+    // keeps the normalizer's alphabetical order, which is the API's own (§17.2),
+    // so the two orderings differ on purpose.
+    const hosts = hostsCache
+      .filter(h => h._geo === geoName)
+      .sort((a, b) => hostCompare(a, b, perHost, ctPerHost));
+
+    let order = 0;
+    for (const host of hosts) {
+      live.add(host.id);
+      const sig = hostSig(host) + "|" + (perHost[host.id] || 0) + "|" + (ctPerHost[host.id] || 0) + "|" + poolSlots;
+      let entry = cardEls.get(host.id);
+
+      if (!entry || entry.sig !== sig) {
+        const el = entry ? entry.el : document.createElement("article");
+        el.className = "host";
+        el.dataset.role = hostRole(host);
+        el.dataset.state = host.observation_state === "retained" ? "retained" : "current";
+        el.innerHTML = hostCardBody(host, perHost, ctPerHost, poolSlots);
+        el._search = host._search;
+        entry = { el, host, geo: geoName, sig };
+        cardEls.set(host.id, entry);
+        if (el.parentNode !== grid) grid.appendChild(el);
+        // Fresh values, so let the segments fill from empty. Only rebuilt cards
+        // animate; an update touches just the hosts that actually changed.
+        // The reflow pins the empty state before the class flips it: a frame
+        // callback would do the same, but it never runs while the tab is not
+        // being painted, and the bars would then stay empty until something
+        // else forced a repaint.
+        void el.offsetHeight;
+        for (const m of el.querySelectorAll(".meter")) m.classList.add("is-on");
+      }
+
+      entry.host = host;
+      if (entry.geo !== geoName) { entry.geo = geoName; grid.appendChild(entry.el); }
+      else if (entry.el.parentNode !== grid) grid.appendChild(entry.el);
+
+      // Ordered with `order` rather than by moving nodes: re-inserting a card
+      // replays its entrance animation.
+      entry.el.style.order = String(order);
+      entry.el.style.setProperty("--i", String(order));
+      order++;
+    }
+  }
+
+  // Drop what is gone: hosts no longer observed, and geos no longer reported.
+  for (const [id, entry] of cardEls) {
+    if (!live.has(id)) { entry.el.remove(); cardEls.delete(id); }
+  }
+  for (const [name, section] of geoEls) {
+    if (!geoOrder.includes(name)) { section.remove(); geoEls.delete(name); }
+  }
+
+  // Resource tables are fleet-wide; the sections above are the per-host view.
+  const sortKey = vmSort.col + (vmSort.asc ? "a" : "d");
+  const vms = vmsCache.slice().sort(vmCompare);
+  const cts = ctsCache.slice().sort(vmCompare);
+
+  const vSig = sortKey + tableSig(vms);
+  if (vSig !== vmTableSig) { vmTableSig = vSig; vmRows = buildTable("vm", vms, vmsCache.length); }
+  const cSig = sortKey + tableSig(cts);
+  if (cSig !== ctTableSig) { ctTableSig = cSig; ctRows = buildTable("ct", cts, ctsCache.length); }
+
+  // Keep the tables last, after every geo section.
+  if (tableEls.ct && container.lastElementChild !== tableEls.ct) {
+    container.appendChild(tableEls.vm);
+    container.appendChild(tableEls.ct);
+  }
+
+  applyFold();
+  applyFilter();
+}
+
+// hostSig covers everything a card draws. Render-time scratch fields (`_geo`,
+// `_search`, `_vis`) are left out: they are added to the payload object after
+// the signature is taken, so including them would make the next render of
+// unchanged data look new and rebuild every card — replaying the gauge fill and
+// flashing the board on every sort click.
+function hostSig(host) {
+  const drawn = {};
+  for (const key of Object.keys(host)) {
+    if (key[0] !== "_") drawn[key] = host[key];
+  }
+  return JSON.stringify(drawn);
+}
+
+// tableSig changes when a row's content or membership changes, so the body is
+// only rebuilt when there is something new to draw.
+function tableSig(rows) {
+  return rows.map(r => [
+    r.inventory_id, r.name, r.title, r.host_id, r.geo, r.observation_state, r.last_seen || "",
+    r.platform || "", (r.ips || []).join(","), r.description, r.guest_os,
+    r.cpu_count, r.memory_bytes, r.disk_total_bytes, r.root_disk_bytes
+  ].join("|")).join("\n");
+}
+
+function ensureGeo(name) {
+  let section = geoEls.get(name);
+  if (section) return section;
+  const id = "geohosts-" + (geoSeq++);
+  section = document.createElement("section");
+  section.className = "geo";
+  section.dataset.geo = name;
+  section.innerHTML =
+    `<header class="geo-head">` +
+      foldButton("geo:" + name, id) +
+      `<h2 class="geo-name">${esc(name)}</h2>` +
+      `<span class="geo-rule" aria-hidden="true"></span>` +
+      `<span class="geo-count"></span>` +
+    `</header>` +
+    `<div class="hosts" id="${escAttr(id)}" data-empty="0"></div>`;
+  geoEls.set(name, section);
+  document.getElementById("geos").appendChild(section);
+  return section;
+}
+
+function foldButton(key, controls) {
+  return `<button class="fold" type="button" data-fold="${escAttr(key)}" aria-expanded="true" ` +
+    `aria-controls="${escAttr(controls)}" title="Collapse">` +
+    `<svg class="fold-ico" viewBox="0 0 12 12" aria-hidden="true" focusable="false">` +
+    `<path d="M2.6 4.4 6 7.8l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.5" ` +
+    `stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+}
+
+function onFoldClick(e) {
+  const btn = e.target.closest("[data-fold]");
+  if (!btn) return;
+  const key = btn.dataset.fold;
+  if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+  applyFold();
+}
+
+function applyFold() {
+  for (const btn of document.querySelectorAll("[data-fold]")) {
+    const open = !collapsed.has(btn.dataset.fold);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.title = open ? "Collapse" : "Expand";
+    const target = document.getElementById(btn.getAttribute("aria-controls"));
+    if (target) target.hidden = !open;
+  }
+}
+
+// applyFilter only shows and hides what is already on the page.
+function applyFilter() {
   const filterActive = Boolean(searchTerm || geoFilter || hostFilter);
   let shown = 0;
-  let html = "";
 
-  geoOrder.forEach((geoName, geoIdx) => {
-    if (geoFilter && geoName !== geoFilter) return;
-    const hosts = allHosts.filter(h => h._geo === geoName && hostVisible(h));
-    const vms = allVMs.filter(v => v.geo === geoName && resourceVisible(v));
-    const cts = allLXDs.filter(c => c.geo === geoName && resourceVisible(c));
-    if (!hosts.length && !vms.length && !cts.length) return;
-    shown += hosts.length + vms.length + cts.length;
-
-    const counts = [];
-    counts.push(`${hosts.length} ${hosts.length === 1 ? "host" : "hosts"}`);
-    if (vms.length) counts.push(`${vms.length} vms`);
-    if (cts.length) counts.push(`${cts.length} ct`);
-
-    html += `<section class="geo">`;
-    html += `<header class="geo-head">`;
-    html += `<span class="geo-fig">Fig. ${pad2(geoIdx + 1)}</span>`;
-    html += `<h2 class="geo-name">${esc(geoName)}</h2>`;
-    html += `<span class="geo-rule" aria-hidden="true"></span>`;
-    html += `<span class="geo-count">${esc(counts.join(" · "))}</span>`;
-    html += `</header>`;
-
-    if (hosts.length) {
-      hosts.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
-      html += `<div class="hosts">`;
-      hosts.forEach((host, i) => { html += hostCard(host, i, perHost, ctPerHost); });
-      html += `</div>`;
-    }
-    html += `</section>`;
-  });
-
-  // Resource tables are fleet-wide; the geo sections above are the per-host view.
-  const vms = allVMs.filter(resourceVisible);
-  const cts = allLXDs.filter(resourceVisible);
-  if (geoFilter) {
-    // A geo filter narrows the tables too, matching the sections above.
-    for (let i = vms.length - 1; i >= 0; i--) if (vms[i].geo !== geoFilter) vms.splice(i, 1);
-    for (let i = cts.length - 1; i >= 0; i--) if (cts[i].geo !== geoFilter) cts.splice(i, 1);
+  for (const h of hostsCache) {
+    h._vis = (!geoFilter || h._geo === geoFilter) && matchesSearch(h) &&
+      !(hostFilter && h.id !== hostFilter);
+    if (h._vis) shown++;
+  }
+  for (const r of vmsCache) {
+    r._vis = (!geoFilter || r.geo === geoFilter) && matchesSearch(r) &&
+      !(hostFilter && r.host_id !== hostFilter);
+    if (r._vis) shown++;
+  }
+  for (const r of ctsCache) {
+    r._vis = (!geoFilter || r.geo === geoFilter) && matchesSearch(r) &&
+      !(hostFilter && r.host_id !== hostFilter);
+    if (r._vis) shown++;
   }
 
-  html += vmTable(vms, allVMs.length);
-  html += ctTable(cts, allLXDs.length);
+  for (const entry of cardEls.values()) entry.el.hidden = !entry.host._vis;
+  for (const r of vmRows) r.el.hidden = !visible(r.id);
+  for (const r of ctRows) r.el.hidden = !visible(r.id);
 
-  container.innerHTML = html;
-
-  if (firstPaint) {
-    requestAnimationFrame(() => {
-      for (const m of container.querySelectorAll(".meter")) m.classList.add("is-on");
-    });
-    firstPaint = false;
+  for (const [name, section] of geoEls) {
+    const nH = hostsCache.filter(h => h._geo === name && h._vis).length;
+    const nV = vmsCache.filter(v => v.geo === name && v._vis).length;
+    const nC = ctsCache.filter(c => c.geo === name && c._vis).length;
+    section.hidden = nH + nV + nC === 0;
+    section.querySelector(".geo-count").textContent = geoCount(nH, nV, nC);
+    section.querySelector(".hosts").dataset.empty = nH === 0 ? "1" : "0";
   }
 
-  document.getElementById("no-results").hidden = !(filterActive && shown === 0 && !vms.length && !cts.length);
+  if (tableEls.vm) setCaption(tableEls.vm, vmsCache.filter(r => r._vis).length, vmsCache.length);
+  if (tableEls.ct) setCaption(tableEls.ct, ctsCache.filter(r => r._vis).length, ctsCache.length);
+
+  document.getElementById("no-results").hidden = !(filterActive && shown === 0);
+
+  // Only level while the whole board is visible: hidden cards measure as zero,
+  // so a filtered board would set the floor from a subset.
+  if (!filterActive) levelHostHeights();
+}
+
+// Each geo is its own grid, so a geo whose tallest card is short would draw
+// shorter cards than its neighbour. The floor is measured from the tallest card
+// on the board instead of hard-coded, so it follows the content.
+function levelHostHeights() {
+  const root = document.getElementById("geos");
+  root.style.removeProperty("--host-h");
+  let tallest = 0;
+  for (const card of root.querySelectorAll(".geo .host")) {
+    tallest = Math.max(tallest, card.getBoundingClientRect().height);
+  }
+  if (tallest) root.style.setProperty("--host-h", `${Math.ceil(tallest)}px`);
+}
+
+function matchesSearch(r) {
+  return !searchTerm || (r._search || "").includes(searchTerm);
+}
+
+function visible(id) {
+  const res = resById.get(id);
+  return Boolean(res && res._vis);
+}
+
+function geoCount(nH, nV, nC) {
+  const parts = [`${nH} ${nH === 1 ? "host" : "hosts"}`];
+  if (nV) parts.push(`${nV} vms`);
+  if (nC) parts.push(`${nC} ct`);
+  return parts.join(" · ");
+}
+
+function setCaption(section, shown, total) {
+  const cap = section.querySelector(".geo-count");
+  if (cap) cap.textContent = countLabel(shown, total);
 }
 
 function renderStats(geos, hosts, vms, cts) {
@@ -343,6 +559,10 @@ function renderStats(geos, hosts, vms, cts) {
     { label: "Geos", value: geos.length, note: geos.map(g => g.name).join(" · ") },
   ];
 
+  const sig = JSON.stringify(stats);
+  if (sig === statsSig) { rail.hidden = false; return; }
+  statsSig = sig;
+
   rail.innerHTML = stats.map(s => `
     <div class="stat">
       <div class="stat-label">${esc(s.label)}</div>
@@ -352,31 +572,28 @@ function renderStats(geos, hosts, vms, cts) {
   rail.hidden = false;
 }
 
-function populateFilters(geoOrder, hosts) {
+function populateFilters(geoOrderNames, hosts) {
+  // Rebuilding a select closes an open native dropdown, so only touch it when
+  // the option list actually changed.
   const geoSelect = document.getElementById("geo-filter");
-  const currentGeo = geoSelect.value;
-  geoSelect.innerHTML = `<option value="">All geos</option>` +
-    geoOrder.slice().sort().map(g =>
-      `<option value="${escAttr(g)}"${g === currentGeo ? " selected" : ""}>${esc(g)}</option>`).join("");
+  const geoNames = geoOrderNames.slice().sort();
+  const gSig = geoNames.join(" ");
+  if (gSig !== geoOptSig) {
+    geoOptSig = gSig;
+    geoSelect.innerHTML = `<option value="">All geos</option>` +
+      geoNames.map(g => `<option value="${escAttr(g)}">${esc(g)}</option>`).join("");
+  }
+  geoSelect.value = geoFilter;
 
   const hostSelect = document.getElementById("host-filter");
-  const currentHost = hostSelect.value;
   const sorted = hosts.slice().sort((a, b) => (a.id || "").localeCompare(b.id || ""));
-  hostSelect.innerHTML = `<option value="">All hosts</option>` +
-    sorted.map(h =>
-      `<option value="${escAttr(h.id)}"${h.id === currentHost ? " selected" : ""}>${esc(h.id)} (${esc(h._geo || "")})</option>`).join("");
-}
-
-function hostVisible(host) {
-  if (hostFilter && host.id !== hostFilter) return false;
-  if (searchTerm && !hostMatches(host, host._geo, searchTerm)) return false;
-  return true;
-}
-
-function resourceVisible(res) {
-  if (hostFilter && res.host_id !== hostFilter) return false;
-  if (searchTerm && !resourceMatches(res, "res", searchTerm)) return false;
-  return true;
+  const hSig = sorted.map(h => h.id + "" + (h._geo || "")).join(" ");
+  if (hSig !== hostOptSig) {
+    hostOptSig = hSig;
+    hostSelect.innerHTML = `<option value="">All hosts</option>` +
+      sorted.map(h => `<option value="${escAttr(h.id)}">${esc(h.id)} (${esc(h._geo || "")})</option>`).join("");
+  }
+  hostSelect.value = hostFilter;
 }
 
 // hostRole derives what the machine actually runs from the storage pools the
@@ -392,22 +609,21 @@ function hostRole(host) {
 
 const ROLE_LABEL = { kvm: "KVM", lxd: "LXD", esxi: "ESXi", host: "Linux" };
 
-function hostCard(host, index, perHost, ctPerHost) {
+// hostCardBody renders the inside of a host card. The card element itself is
+// created and keyed in render(), so unchanged hosts are never rebuilt.
+function hostCardBody(host, perHost, ctPerHost, poolSlots) {
   const role = hostRole(host);
   const retained = host.observation_state === "retained";
   const nVM = perHost[host.id] || 0;
   const nCT = ctPerHost[host.id] || 0;
 
-  let h = `<article class="host" data-role="${role}" data-state="${retained ? "retained" : "current"}" style="--i:${index}">`;
-
-  h += `<div class="host-head">`;
+  let h = `<div class="host-head">`;
   h += `<h3 class="host-name">${esc(host.id)}</h3>`;
   h += `<span class="host-chip">${ROLE_LABEL[role] || "Linux"}</span>`;
   const guests = [];
   if (nVM) guests.push(`${nVM} vm${nVM === 1 ? "" : "s"}`);
   if (nCT) guests.push(`${nCT} container${nCT === 1 ? "" : "s"}`);
   if (guests.length) h += `<span class="host-guests">${esc(guests.join(" · "))}</span>`;
-  h += `<span class="host-idx">${pad2(index + 1)}</span>`;
   h += `</div>`;
 
   if (host.description) h += `<p class="host-desc">${esc(host.description)}</p>`;
@@ -431,10 +647,12 @@ function hostCard(host, index, perHost, ctPerHost) {
     const all = host.ips.join(", ");
     rows.push(["IP", raw(`<span title="${escAttr(all)}">${formatIPs(host.ips)}</span>`)]);
   }
-  if (host.disks && host.disks.length) {
-    const groups = host.disks.map(d => `${d.count} × ${formatBytes(d.size_bytes)}`);
-    rows.push(["Disks", raw(`<span class="disk-list">${esc(groups.join(" · "))}</span>`)]);
-  }
+  // Always shown, even empty: ESXi hosts report no disks, and the blank keeps
+  // every card's readout on the same line grid (§10 unknown values render —).
+  const diskGroups = (host.disks || []).map(d => `${d.count} × ${formatBytes(d.size_bytes)}`);
+  rows.push(["Disks", diskGroups.length
+    ? raw(`<span class="disk-list">${esc(diskGroups.join(" · "))}</span>`)
+    : raw(na())]);
   if (retained) {
     rows.push(["Last seen", raw(`<span class="host-stale">${esc(timeAgo(host.last_seen) || "unknown")}</span>`)]);
   }
@@ -501,10 +719,36 @@ function hostCard(host, index, perHost, ctPerHost) {
     ));
   }
 
-  if (storage.length) h += `<div class="pools">${storage.join("")}</div>`;
+  // Hosts report a different number of pools — an ESXi host one datastore, a
+  // KVM host one or two pools — which would leave the row of cards with a
+  // ragged bottom edge. Padding to the fleet's slot count keeps every storage
+  // area the same height; the extra slots are blank, not empty gauges.
+  if (storage.length || poolSlots) {
+    while (storage.length < poolSlots) storage.push(blankPool());
+    h += `<div class="pools">${storage.join("")}</div>`;
+  }
 
-  h += `</div></article>`;
   return h;
+}
+
+// blankPool occupies a storage slot with the same markup a real pool does, so
+// the reserved height cannot drift when the pool styles change.
+function blankPool() {
+  return `<div class="pool pool-blank" aria-hidden="true">` +
+    `<div class="pool-head">` +
+    `<span class="pool-key"></span><span class="pool-type"></span><span class="pool-val"></span>` +
+    `</div>` +
+    `<div class="meter"></div>` +
+    `</div>`;
+}
+
+// poolRowCount counts the storage rows a host will actually render, so the
+// fleet-wide slot count matches what the cards draw.
+function poolRowCount(host) {
+  let n = 0;
+  for (const pool of (host.storage_pools || [])) { if (pool.total_bytes) n++; }
+  for (const fs of (host.filesystems || [])) { if (fs.total_bytes) n++; }
+  return n;
 }
 
 function meterRow(key, u, h, value, title) {
@@ -533,70 +777,84 @@ function storageRow(name, type, p, value) {
     `</div>`;
 }
 
-function vmTable(vms, total) {
-  if (!vms.length && total === 0) return "";
-  const cap = countLabel("Virtual machines", vms.length, total);
-  let h = `<section class="table-block">`;
-  h += `<header class="table-cap"><h2>Virtual machines</h2><span class="geo-rule" aria-hidden="true"></span><span class="geo-count">${esc(cap)}</span></header>`;
-  h += `<div class="table-scroll"><table><thead><tr>`;
-  h += `<th><button class="sort-btn" type="button" onclick="setSort('host_id')">Host${sortArrow("host_id")}</button></th>`;
-  h += `<th><button class="sort-btn" type="button" onclick="setSort('name')">Name${sortArrow("name")}</button></th>`;
-  h += `<th><button class="sort-btn" type="button" onclick="setSort('platform')">Platform${sortArrow("platform")}</button></th>`;
-  h += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th>`;
-  h += `<th class="num">vCPU</th><th class="num">RAM</th><th class="num">Disk</th>`;
-  h += `</tr></thead><tbody>`;
-
-  for (const vm of vms) {
-    const label = vm.title || vm.name;
-    const ips = (vm.ips || []).join(", ");
-    h += `<tr>`;
-    h += `<td class="mono">${esc(vm.host_id)}</td>`;
-    h += `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}${staleMark(vm)}</td>`;
-    h += `<td><span class="dot" data-role="${platformRole(vm.platform)}"></span>${esc(vm.platform)}</td>`;
-    h += `<td>${esc(vm.geo || "—")}</td>`;
-    h += `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(vm.ips)}</td>`;
-    h += `<td>${esc(vm.description) || na()}</td>`;
-    h += `<td>${esc(vm.guest_os) || na()}</td>`;
-    h += `<td class="num">${vm.cpu_count || na()}</td>`;
-    h += `<td class="num">${vm.memory_bytes ? formatBytes(vm.memory_bytes) : na()}</td>`;
-    h += `<td class="num">${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : na()}</td>`;
-    h += `</tr>`;
+// buildTable draws one resource table and returns its body rows, paired with the
+// resources they represent so a later filter pass can hide them individually.
+function buildTable(kind, rows, total) {
+  let section = tableEls[kind];
+  if (!section) {
+    section = document.createElement("section");
+    section.className = "table-block";
+    section.dataset.table = kind;
+    document.getElementById("geos").appendChild(section);
+    tableEls[kind] = section;
   }
 
-  h += `</tbody></table></div></section>`;
-  return h;
-}
-
-function ctTable(cts, total) {
-  if (!cts.length && total === 0) return "";
-  const cap = countLabel("LXD containers", cts.length, total);
-  let h = `<section class="table-block">`;
-  h += `<header class="table-cap"><h2>LXD containers</h2><span class="geo-rule" aria-hidden="true"></span><span class="geo-count">${esc(cap)}</span></header>`;
-  h += `<div class="table-scroll"><table><thead><tr>`;
-  h += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS / Image</th>`;
-  h += `<th class="num">CPU</th><th class="num">RAM</th><th class="num">Disk</th>`;
-  h += `</tr></thead><tbody>`;
-
-  for (const ct of cts) {
-    const ips = (ct.ips || []).join(", ");
-    h += `<tr>`;
-    h += `<td class="mono">${esc(ct.host_id)}</td>`;
-    h += `<td class="strong"><span class="dot" data-role="lxd"></span>${esc(ct.name)}${staleMark(ct)}</td>`;
-    h += `<td>${esc(ct.geo || "—")}</td>`;
-    h += `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(ct.ips)}</td>`;
-    h += `<td>${esc(ct.description) || na()}</td>`;
-    h += `<td>${esc(ct.guest_os) || na()}</td>`;
-    h += `<td class="num">${ct.cpu_count || na()}</td>`;
-    h += `<td class="num">${ct.memory_bytes ? formatBytes(ct.memory_bytes) : na()}</td>`;
-    h += `<td class="num">${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : na()}</td>`;
-    h += `</tr>`;
+  if (!rows.length && total === 0) {
+    section.hidden = true;
+    section.innerHTML = "";
+    return [];
   }
+  section.hidden = false;
 
-  h += `</tbody></table></div></section>`;
-  return h;
+  const isVM = kind === "vm";
+  const id = isVM ? "vm-rows" : "ct-rows";
+  const title = isVM ? "Virtual machines" : "LXD containers";
+
+  let h = `<header class="table-cap">` + foldButton("table:" + kind, id) +
+    `<h2>${esc(title)}</h2><span class="geo-rule" aria-hidden="true"></span><span class="geo-count"></span></header>`;
+  h += `<div class="table-scroll" id="${id}"><table><thead><tr>`;
+  if (isVM) {
+    h += `<th><button class="sort-btn" type="button" onclick="setSort('host_id')">Host${sortArrow("host_id")}</button></th>`;
+    h += `<th><button class="sort-btn" type="button" onclick="setSort('name')">Name${sortArrow("name")}</button></th>`;
+    h += `<th><button class="sort-btn" type="button" onclick="setSort('platform')">Platform${sortArrow("platform")}</button></th>`;
+    h += `<th>Geo</th><th>IPs</th><th>Description</th><th>Guest OS</th><th class="num">vCPU</th>`;
+  } else {
+    h += `<th>Host</th><th>Name</th><th>Geo</th><th>IPs</th><th>Description</th><th>OS / Image</th><th class="num">CPU</th>`;
+  }
+  h += `<th class="num">RAM</th><th class="num">Disk</th>`;
+  h += `</tr></thead><tbody>` + (isVM ? rows.map(vmRow).join("") : rows.map(ctRow).join("")) + `</tbody></table></div>`;
+  section.innerHTML = h;
+
+  // Rows are paired by inventory id, not by object reference: a refresh replaces
+  // every resource object, and a row holding the previous one would keep
+  // reading a stale visibility flag.
+  const trs = section.querySelectorAll("tbody tr");
+  return rows.map((res, i) => ({ el: trs[i], id: res.inventory_id }));
 }
 
-function countLabel(noun, shown, total) {
+function vmRow(vm) {
+  const label = vm.title || vm.name;
+  const ips = (vm.ips || []).join(", ");
+  return `<tr>` +
+    `<td class="mono">${esc(vm.host_id)}</td>` +
+    `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}${staleMark(vm)}</td>` +
+    `<td><span class="dot" data-role="${platformRole(vm.platform)}"></span>${esc(vm.platform)}</td>` +
+    `<td>${esc(vm.geo || "—")}</td>` +
+    `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(vm.ips)}</td>` +
+    `<td>${esc(vm.description) || na()}</td>` +
+    `<td>${esc(vm.guest_os) || na()}</td>` +
+    `<td class="num">${vm.cpu_count || na()}</td>` +
+    `<td class="num">${vm.memory_bytes ? formatBytes(vm.memory_bytes) : na()}</td>` +
+    `<td class="num">${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : na()}</td>` +
+    `</tr>`;
+}
+
+function ctRow(ct) {
+  const ips = (ct.ips || []).join(", ");
+  return `<tr>` +
+    `<td class="mono">${esc(ct.host_id)}</td>` +
+    `<td class="strong"><span class="dot" data-role="lxd"></span>${esc(ct.name)}${staleMark(ct)}</td>` +
+    `<td>${esc(ct.geo || "—")}</td>` +
+    `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(ct.ips)}</td>` +
+    `<td>${esc(ct.description) || na()}</td>` +
+    `<td>${esc(ct.guest_os) || na()}</td>` +
+    `<td class="num">${ct.cpu_count || na()}</td>` +
+    `<td class="num">${ct.memory_bytes ? formatBytes(ct.memory_bytes) : na()}</td>` +
+    `<td class="num">${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : na()}</td>` +
+    `</tr>`;
+}
+
+function countLabel(shown, total) {
   if (shown === total) return `${total} ${total === 1 ? "entry" : "entries"}`;
   return `${shown} of ${total} shown`;
 }
@@ -623,38 +881,34 @@ function resetDropdowns(except) {
 function onSearch(e) {
   searchTerm = e.target.value.trim().toLowerCase();
   if (searchTerm) resetDropdowns("search");
-  if (currentData) render(currentData);
+  if (currentData) applyFilter();
 }
 
 function onGeoFilter() {
   geoFilter = document.getElementById("geo-filter").value;
   if (geoFilter) resetDropdowns("geo");
-  if (currentData) render(currentData);
+  if (currentData) applyFilter();
 }
 
 function onHostFilter() {
   hostFilter = document.getElementById("host-filter").value;
   if (hostFilter) resetDropdowns("host");
-  if (currentData) render(currentData);
+  if (currentData) applyFilter();
 }
 
-function hostMatches(host, geo, term) {
-  if ((host.id || "").toLowerCase().includes(term)) return true;
-  if ((host.description || "").toLowerCase().includes(term)) return true;
-  if ((host.hostname || "").toLowerCase().includes(term)) return true;
-  if ((host.ips || []).some(ip => ip.includes(term))) return true;
-  if ((host.os_name || "").toLowerCase().includes(term)) return true;
-  return false;
+// searchText joins the searchable fields of a record. The newline separator
+// keeps a term from spanning two unrelated fields.
+function searchText(parts) {
+  return parts.filter(Boolean).join("\n").toLowerCase();
 }
 
-function resourceMatches(res, type, term) {
-  if ((res.name || "").toLowerCase().includes(term)) return true;
-  if ((res.title || "").toLowerCase().includes(term)) return true;
-  if ((res.description || "").toLowerCase().includes(term)) return true;
-  if ((res.guest_os || "").toLowerCase().includes(term)) return true;
-  if ((res.ips || []).some(ip => ip.includes(term))) return true;
-  if ((res.host_id || "").toLowerCase().includes(term)) return true;
-  return false;
+// hostCompare orders hosts by total guests, most first. Ties fall back to the
+// host name so the order is stable between refreshes.
+function hostCompare(a, b, perHost, ctPerHost) {
+  const ga = (perHost[a.id] || 0) + (ctPerHost[a.id] || 0);
+  const gb = (perHost[b.id] || 0) + (ctPerHost[b.id] || 0);
+  if (ga !== gb) return gb - ga;
+  return (a.id || "").localeCompare(b.id || "");
 }
 
 // --- Utilities ---
@@ -710,8 +964,6 @@ function round(v, dp) {
   const f = Math.pow(10, dp);
   return Math.round(v * f) / f;
 }
-
-function pad2(n) { return String(n).padStart(2, "0"); }
 
 // memBands turns a memory readout into three non-overlapping bands. Hugepage
 // free memory is a subset of available, so it is carved out of the free band —
