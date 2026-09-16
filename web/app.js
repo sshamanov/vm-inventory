@@ -647,11 +647,11 @@ function hostCardBody(host, perHost, ctPerHost, poolSlots) {
     const all = host.ips.join(", ");
     rows.push(["IP", raw(`<span title="${escAttr(all)}">${formatIPs(host.ips)}</span>`)]);
   }
-  // Always shown, even empty: ESXi hosts report no disks, and the blank keeps
-  // every card's readout on the same line grid (§10 unknown values render —).
+  // Always shown, even empty, so every card's readout stays on the same line
+  // grid (§10 unknown values render —).
   const diskGroups = (host.disks || []).map(d => `${d.count} × ${formatBytes(d.size_bytes)}`);
   rows.push(["Disks", diskGroups.length
-    ? raw(`<span class="disk-list">${esc(diskGroups.join(" · "))}</span>`)
+    ? raw(`<span class="disk-list">${esc(diskGroups.join(", "))}</span>`)
     : raw(na())]);
   if (retained) {
     rows.push(["Last seen", raw(`<span class="host-stale">${esc(timeAgo(host.last_seen) || "unknown")}</span>`)]);
