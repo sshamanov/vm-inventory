@@ -868,43 +868,59 @@ function buildTable(kind, rows, total) {
 function vmRow(vm) {
   const label = vm.title || vm.name;
   const ips = (vm.ips || []).join(", ");
+  const readings = [
+    vm.cpu_count ? `${vm.cpu_count} vCPU` : "",
+    vm.memory_bytes ? formatBytes(vm.memory_bytes) : "",
+    vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : "",
+  ];
   return `<tr${rowState(vm)}>` +
     `<td class="mono">${esc(vm.host_id)}</td>` +
-    `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}${staleMark(vm)}</td>` +
+    `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}</td>` +
     `<td>${esc(vm.platform)}</td>` +
     `<td>${esc(vm.geo || "—")}</td>` +
     `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(vm.ips)}</td>` +
     `<td>${esc(vm.description) || na()}</td>` +
     `<td>${esc(vm.guest_os) || na()}</td>` +
-    `<td class="num">${vm.cpu_count || na()}</td>` +
-    `<td class="num">${vm.memory_bytes ? formatBytes(vm.memory_bytes) : na()}</td>` +
-    `<td class="num">${vm.disk_total_bytes ? formatBytes(vm.disk_total_bytes) : na()}</td>` +
+    readingsCell(vm, readings) +
     `</tr>`;
 }
 
 function ctRow(ct) {
   const ips = (ct.ips || []).join(", ");
+  const readings = [
+    ct.cpu_count ? `${ct.cpu_count} vCPU` : "",
+    ct.memory_bytes ? formatBytes(ct.memory_bytes) : "",
+    ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : "",
+  ];
   return `<tr${rowState(ct)}>` +
     `<td class="mono">${esc(ct.host_id)}</td>` +
-    `<td class="strong">${esc(ct.name)}${staleMark(ct)}</td>` +
+    `<td class="strong">${esc(ct.name)}</td>` +
     `<td>${esc(ct.geo || "—")}</td>` +
     `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(ct.ips)}</td>` +
     `<td>${esc(ct.description) || na()}</td>` +
     `<td>${esc(ct.guest_os) || na()}</td>` +
-    `<td class="num">${ct.cpu_count || na()}</td>` +
-    `<td class="num">${ct.memory_bytes ? formatBytes(ct.memory_bytes) : na()}</td>` +
-    `<td class="num">${ct.root_disk_bytes ? formatBytes(ct.root_disk_bytes) : na()}</td>` +
+    readingsCell(ct, readings) +
     `</tr>`;
+}
+
+// readingsCell renders the three trailing columns. A resource being collected
+// gets one cell each: vCPU, RAM and disk. A retained one gets a single cell
+// spanning them, carrying the capacity it was last seen with — when the index
+// still knows it — and the stamp saying when that was.
+function readingsCell(res, readings) {
+  if (res.observation_state !== "retained") {
+    return readings.map(r => `<td class="num">${r || na()}</td>`).join("");
+  }
+  const known = readings.filter(Boolean).map(esc).join(" · ");
+  return `<td class="num stale-cell" colspan="${readings.length}">` +
+    (known ? `<span class="stale-specs">${known}</span>` : "") +
+    `<span class="stale-stamp">last seen <b>${esc(timeAgo(res.last_seen) || "unknown")}</b></span>` +
+    `</td>`;
 }
 
 function countLabel(shown, total) {
   if (shown === total) return `${total} ${total === 1 ? "entry" : "entries"}`;
   return `${shown} of ${total} shown`;
-}
-
-function staleMark(res) {
-  if (res.observation_state !== "retained") return "";
-  return ` <span class="host-stale">last seen ${esc(timeAgo(res.last_seen) || "unknown")}</span>`;
 }
 
 // rowState marks a retired resource so the stylesheet can dim its row, the way

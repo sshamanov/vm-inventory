@@ -497,10 +497,6 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   margin: 2px 0 0;
   font-size: .78rem; color: var(--ink-2);
 }
-.host-stale {
-  font-family: var(--font-mono); font-size: .58rem;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--huge);
-}
 .host-guests {
   margin-left: auto;
   font-family: var(--font-mono); font-size: .6rem;
@@ -660,10 +656,28 @@ tbody tr:hover td { background: var(--surface-2); }
 tbody tr:hover td:first-child { box-shadow: inset 2px 0 0 var(--signal); }
 
 /* A resource that has stopped being collected is dimmed in place, the way a
-   retired host's card is. Hover restores it, so a dimmed row can still be read
-   without switching the view back. */
-tbody tr[data-state="retained"] { opacity: .55; }
-tbody tr[data-state="retained"]:hover { opacity: 1; }
+   retired host's card is. The stamp below is exempt from that dimming so the
+   row still says at full contrast when the instance was last seen. Hover
+   restores the rest, so a dimmed row can be read without switching the view
+   back. */
+tbody tr[data-state="retained"] td { opacity: .55; }
+tbody tr[data-state="retained"]:hover td { opacity: 1; }
+tbody tr[data-state="retained"] td.stale-cell { opacity: 1; }
+
+/* The three reading columns, collapsed into one cell for a departed instance:
+   the capacity it was last seen with, then when that was. Italic sets the stamp
+   apart from the live readings above it while staying legible. */
+.stale-cell { white-space: nowrap; }
+.stale-specs {
+  font-family: var(--font-mono); font-size: .68rem;
+  color: var(--faint); margin-right: 12px;
+}
+.stale-stamp, .host-stale {
+  font-family: var(--font-mono); font-style: italic; font-size: .8rem;
+  letter-spacing: .04em; color: var(--huge);
+  font-variant-numeric: tabular-nums;
+}
+.stale-stamp b { font-weight: 600; }
 
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.mono { font-family: var(--font-mono); font-size: .72rem; }
