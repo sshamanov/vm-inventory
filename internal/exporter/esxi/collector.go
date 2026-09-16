@@ -10,7 +10,7 @@ import (
 	"vm-inventory/internal/shared"
 )
 
-// ESXiCollector collects ESXi hosts, VMs, and datastores (§10.4).
+// ESXiCollector collects ESXi hosts, VMs, datastores, and host disks (§10.4).
 // Uses github.com/vmware/govmomi.
 type ESXiCollector struct {
 	targets    []ESXITargetConfig
@@ -59,6 +59,19 @@ type ESXiHostHardware struct {
 	MemoryTotalBytes int64
 	MemoryAvailBytes int64
 	IPs            []string
+	Disks          []ESXiHostDisk
+}
+
+// ESXiHostDisk holds a host storage LUN (§12.4). A datastore is a volume built
+// on one of these, so the same capacity appears twice on the card: once as the
+// disk the host sees and once as the datastore it exports.
+type ESXiHostDisk struct {
+	// ID is the canonical name (naa.…), which stays put across reboots and is
+	// what a partition or extent refers to.
+	ID        string
+	Name      string
+	Model     string
+	SizeBytes int64
 }
 
 // ESXiDatastore holds datastore data.
@@ -201,6 +214,11 @@ func (c *ESXiCollector) collectTarget(ctx context.Context, client ESXIClient, ta
 		metricGauge(shared.MetricHostMemoryAvailableBytes, target.HostID, float64(hw.MemoryAvailBytes)),
 	)
 
+	// Host disks.
+	if len(hw.Disks) > 0 {
+		families = append(families, c.buildDiskMetrics(target.HostID, hw.Disks)...)
+	}
+
 	// Datastores.
 	datastores, err := client.Datastores(ctx)
 	if err == nil {
@@ -284,6 +302,46 @@ func (c *ESXiCollector) buildVMMetrics(hostID string, vms []ESXiVM) []exporter.M
 		{Name: shared.MetricResourceCPUCount, Help: "Resource CPU count.", Type: "gauge", Metrics: cpuMetrics},
 		{Name: shared.MetricResourceMemoryBytes, Help: "Resource memory bytes.", Type: "gauge", Metrics: memMetrics},
 		{Name: shared.MetricResourceDiskBytes, Help: "Resource disk bytes.", Type: "gauge", Metrics: diskMetrics},
+	}
+}
+
+func (c *ESXiCollector) buildDiskMetrics(hostID string, disks []ESXiHostDisk) []exporter.MetricFamily {
+	var infoMetrics, sizeMetrics []exporter.Metric
+
+	// Help strings match the Linux collector: the same metric name with two
+	// different help texts makes Prometheus reject the scrape.
+	for _, disk := range disks {
+		infoMetrics = append(infoMetrics, exporter.Metric{
+			Labels: map[string]string{
+				shared.LabelHostID:     hostID,
+				shared.LabelDeviceID:   disk.ID,
+				shared.LabelDeviceName: disk.Name,
+				shared.LabelModel:      disk.Model,
+			},
+			Value: 1,
+		})
+		sizeMetrics = append(sizeMetrics, exporter.Metric{
+			Labels: map[string]string{
+				shared.LabelHostID:   hostID,
+				shared.LabelDeviceID: disk.ID,
+			},
+			Value: float64(disk.SizeBytes),
+		})
+	}
+
+	return []exporter.MetricFamily{
+		{
+			Name:    shared.MetricHostBlockDeviceInfo,
+			Help:    "Physical block device information.",
+			Type:    "gauge",
+			Metrics: infoMetrics,
+		},
+		{
+			Name:    shared.MetricHostBlockDeviceBytes,
+			Help:    "Physical block device size in bytes.",
+			Type:    "gauge",
+			Metrics: sizeMetrics,
+		},
 	}
 }
 

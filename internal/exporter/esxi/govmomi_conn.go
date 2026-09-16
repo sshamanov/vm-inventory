@@ -11,6 +11,8 @@ import (
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
+
+	"vm-inventory/internal/shared"
 )
 
 // govmomiFactory creates real ESXi API clients via govmomi.
@@ -70,6 +72,7 @@ func (c *govmomiClient) HostSystem(ctx context.Context) (ESXiHostHardware, error
 	var hw mo.HostSystem
 	if err := host.Properties(ctx, host.Reference(), []string{
 		"summary.hardware", "summary.quickStats", "config.network",
+		"config.storageDevice.scsiLun",
 	}, &hw); err != nil {
 		return ESXiHostHardware{}, err
 	}
@@ -101,7 +104,56 @@ func (c *govmomiClient) HostSystem(ctx context.Context) (ESXiHostHardware, error
 		}
 	}
 
+	hwInfo.Disks = hostDisks(hw)
+
 	return hwInfo, nil
+}
+
+// hostDisks maps the host's SCSI LUN list to disks. The list holds everything
+// on the SCSI bus, so the concrete HostScsiDisk type is what separates a disk
+// from a cdrom, a tape or an enclosure. A disk reached over several paths
+// appears once, under one canonical name, but the guard keeps the metric from
+// double counting a LUN if the host reports it twice.
+func hostDisks(hw mo.HostSystem) []ESXiHostDisk {
+	if hw.Config == nil || hw.Config.StorageDevice == nil {
+		return nil
+	}
+
+	var disks []ESXiHostDisk
+	seen := make(map[string]struct{})
+	for _, lun := range hw.Config.StorageDevice.ScsiLun {
+		disk, ok := lun.(*types.HostScsiDisk)
+		if !ok || disk.CanonicalName == "" {
+			continue
+		}
+		// A LUN the host cannot size is not a disk. The virtual media device a
+		// management controller exposes on the SCSI bus is typed as a disk and
+		// reports zero blocks; on the card it would read as a disk of no bytes.
+		sizeBytes := int64(disk.Capacity.BlockSize) * disk.Capacity.Block
+		if sizeBytes == 0 {
+			continue
+		}
+		if _, dup := seen[disk.CanonicalName]; dup {
+			continue
+		}
+		seen[disk.CanonicalName] = struct{}{}
+
+		// DeviceName is the host's own label for the device and may be absent;
+		// the canonical name is a poor name to read but never missing. Models
+		// arrive space padded ("PERC H730 Mini  ").
+		name := shared.CleanDescription(disk.DeviceName)
+		if name == "" {
+			name = disk.CanonicalName
+		}
+
+		disks = append(disks, ESXiHostDisk{
+			ID:        disk.CanonicalName,
+			Name:      name,
+			Model:     shared.CleanDescription(disk.Model),
+			SizeBytes: sizeBytes,
+		})
+	}
+	return disks
 }
 
 func (c *govmomiClient) Datastores(ctx context.Context) ([]ESXiDatastore, error) {
