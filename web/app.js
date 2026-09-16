@@ -828,7 +828,7 @@ function vmRow(vm) {
   return `<tr>` +
     `<td class="mono">${esc(vm.host_id)}</td>` +
     `<td class="strong"${vm.title ? ` title="${escAttr(vm.name)}"` : ""}>${esc(label)}${staleMark(vm)}</td>` +
-    `<td><span class="dot" data-role="${platformRole(vm.platform)}"></span>${esc(vm.platform)}</td>` +
+    `<td>${esc(vm.platform)}</td>` +
     `<td>${esc(vm.geo || "—")}</td>` +
     `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(vm.ips)}</td>` +
     `<td>${esc(vm.description) || na()}</td>` +
@@ -843,7 +843,7 @@ function ctRow(ct) {
   const ips = (ct.ips || []).join(", ");
   return `<tr>` +
     `<td class="mono">${esc(ct.host_id)}</td>` +
-    `<td class="strong"><span class="dot" data-role="lxd"></span>${esc(ct.name)}${staleMark(ct)}</td>` +
+    `<td class="strong">${esc(ct.name)}${staleMark(ct)}</td>` +
     `<td>${esc(ct.geo || "—")}</td>` +
     `<td class="mono"${ips ? ` title="${escAttr(ips)}"` : ""}>${formatIPs(ct.ips)}</td>` +
     `<td>${esc(ct.description) || na()}</td>` +
@@ -862,12 +862,6 @@ function countLabel(shown, total) {
 function staleMark(res) {
   if (res.observation_state !== "retained") return "";
   return ` <span class="host-stale">last seen ${esc(timeAgo(res.last_seen) || "unknown")}</span>`;
-}
-
-function platformRole(platform) {
-  if (platform === "ESXi") return "esxi";
-  if (platform === "KVM") return "kvm";
-  return "host";
 }
 
 // --- Search ---

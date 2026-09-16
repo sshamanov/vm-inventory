@@ -1,11 +1,12 @@
 /* ==========================================================================
    VM Inventory — "bench sheet"
    A calibration-record aesthetic: hairline rules, ruler ticks, monospaced
-   readouts, segmented meters, platform-coloured spines.
+   readouts, segmented meters.
 
-   The palette is cold on purpose — violet, blue, green. Warm accents (reds,
-   oranges, ambers) read as alarms on a board operators scan for trouble, and
-   a fleet that is merely busy would look like it is failing.
+   The palette is warm paper all through — chrome, rules and meter bands. The
+   platform colour lives in one place only: the tag in the card head that says
+   KVM, LXD or ESXi. Everything structural stays neutral, so the colour on a
+   row of cards means "what does this machine run" and nothing else.
 
    Plain CSS, no build step (§17). Fonts are self-hosted — the app must work
    on a trusted internal network that may have no route to the public web.
@@ -31,35 +32,35 @@
 :root {
   color-scheme: light;
 
-  --paper:     #eef1f7;
-  --surface:   #fafbfe;
-  --surface-2: #f1f4fa;
+  --paper:     #f0ede5;
+  --surface:   #fbfaf6;
+  --surface-2: #f5f3ec;
 
-  --ink:       #141821;
-  --ink-2:     #454e5e;
-  --muted:     #6a7484;
-  --faint:     #9aa3b2;
+  --ink:       #17191b;
+  --ink-2:     #4b4e51;
+  --muted:     #7c7a72;
+  --faint:     #a5a297;
 
-  --hair:      #d5dbe6;
-  --hair-2:    #e5eaf2;
-  --rule:      #aab4c6;
+  --hair:      #d8d3c5;
+  --hair-2:    #e7e3d9;
+  --rule:      #b6b0a0;
 
-  --signal:    #5b3fd6;
-  --signal-2:  #4a30bd;
-  --on-signal: #f5f4ff;
+  --signal:    #cc4718;
+  --signal-2:  #ab3a11;
+  --on-signal: #fff9f5;
 
-  --used:      #5866d8;
-  --free:      #2f8f6b;
-  --huge:      #2f8fc4;
-  --unlit:     #dde3ec;
+  --used:      #cc4420;
+  --free:      #2e8a6a;
+  --huge:      #b98a1e;
+  --unlit:     #e3dfd4;
 
-  --spine-kvm:  #5b3fd6;
-  --spine-lxd:  #1f8f6b;
-  --spine-esxi: #2f6fb8;
-  --spine-host: #8b95a5;
+  --tag-kvm:  #cc4718;
+  --tag-lxd:  #2e8a6a;
+  --tag-esxi: #37679b;
+  --tag-host: #8d8a80;
 
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236a7484' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
-  --grain-opacity: .13;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237c7a72' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --grain-opacity: .16;
 
   /* Updated from JS to the live masthead height, so the sticky table header
      parks under the masthead instead of sliding behind it. */
@@ -68,42 +69,42 @@
   --font-display: 'Archivo', ui-sans-serif, system-ui, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Spline Sans Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --shadow-card: 0 1px 0 rgba(12,16,26,.03), 0 10px 22px -19px rgba(12,16,26,.5);
-  --shadow-pop:  0 20px 44px -22px rgba(12,16,26,.4);
+  --shadow-card: 0 1px 0 rgba(23,25,27,.03), 0 10px 22px -19px rgba(23,25,27,.55);
+  --shadow-pop:  0 20px 44px -22px rgba(23,25,27,.45);
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
 
-  --paper:     #0b0e13;
-  --surface:   #131822;
-  --surface-2: #1a202b;
+  --paper:     #0e1012;
+  --surface:   #171a1e;
+  --surface-2: #1d2126;
 
-  --ink:       #e8ecf4;
-  --ink-2:     #aeb7c6;
-  --muted:     #7e889a;
-  --faint:     #646e80;
+  --ink:       #e9e5db;
+  --ink-2:     #b0afa7;
+  --muted:     #83857f;
+  --faint:     #6c6e69;
 
-  --hair:      #262e3b;
-  --hair-2:    #1e2531;
-  --rule:      #3a4453;
+  --hair:      #2b3036;
+  --hair-2:    #23272c;
+  --rule:      #3b4147;
 
-  --signal:    #8f7bff;
-  --signal-2:  #a693ff;
-  --on-signal: #0c0a1a;
+  --signal:    #ff6a35;
+  --signal-2:  #ff8757;
+  --on-signal: #1b0d05;
 
-  --used:      #7b8cff;
-  --free:      #3fbd8f;
-  --huge:      #46b0e0;
-  --unlit:     #212936;
+  --used:      #e2542a;
+  --free:      #3fae86;
+  --huge:      #d8a13a;
+  --unlit:     #242a30;
 
-  --spine-kvm:  #8f7bff;
-  --spine-lxd:  #3fbd8f;
-  --spine-esxi: #6aa8e8;
-  --spine-host: #79839a;
+  --tag-kvm:  #ff6a35;
+  --tag-lxd:  #3fae86;
+  --tag-esxi: #6f9fd8;
+  --tag-host: #7b7d78;
 
-  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237e889a' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
-  --grain-opacity: .09;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2383857f' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+  --grain-opacity: .11;
 
   --shadow-card: 0 1px 0 rgba(0,0,0,.45), 0 12px 26px -20px #000;
   --shadow-pop:  0 22px 48px -24px #000;
@@ -442,7 +443,7 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 }
 .host::before {
   content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
-  background: var(--spine, var(--spine-host));
+  background: var(--rule);
 }
 
 @keyframes rise {
@@ -452,14 +453,14 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 
 .host[data-state="retained"] { background: var(--surface-2); }
 .host[data-state="retained"]::before {
-  background: repeating-linear-gradient(180deg, var(--spine, var(--spine-host)) 0 5px, transparent 5px 10px);
+  background: repeating-linear-gradient(180deg, var(--rule) 0 5px, transparent 5px 10px);
 }
 .host[data-state="retained"] .host-body { opacity: .7; }
 
-.host[data-role="kvm"]  { --spine: var(--spine-kvm); }
-.host[data-role="lxd"]  { --spine: var(--spine-lxd); }
-.host[data-role="esxi"] { --spine: var(--spine-esxi); }
-.host[data-role="host"] { --spine: var(--spine-host); }
+.host[data-role="kvm"]  { --tag: var(--tag-kvm); }
+.host[data-role="lxd"]  { --tag: var(--tag-lxd); }
+.host[data-role="esxi"] { --tag: var(--tag-esxi); }
+.host[data-role="host"] { --tag: var(--tag-host); }
 
 .host-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .host-name {
@@ -470,7 +471,7 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   font-family: var(--font-mono); font-size: .56rem; font-weight: 500;
   letter-spacing: .15em; text-transform: uppercase;
   padding: 2px 6px; border: 1px solid currentColor; border-radius: 2px;
-  color: var(--spine, var(--spine-host));
+  color: var(--tag, var(--tag-host));
 }
 .host-desc {
   margin: 2px 0 0;
@@ -651,15 +652,6 @@ td.na { color: var(--faint); }
 }
 .sort-btn:hover { color: var(--signal); }
 .sort-btn .arw { color: var(--signal); font-size: .78em; }
-
-.dot {
-  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
-  margin-right: 5px; vertical-align: 1px;
-  background: var(--spine-host);
-}
-.dot[data-role="kvm"]  { background: var(--spine-kvm); }
-.dot[data-role="lxd"]  { background: var(--spine-lxd); }
-.dot[data-role="esxi"] { background: var(--spine-esxi); }
 
 /* --- States ------------------------------------------------------------- */
 
