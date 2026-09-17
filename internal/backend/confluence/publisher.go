@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	pageTitle = "VM Directory"
+	pageTitle = "VM Inventory"
 	// hashPropertyKey is the Confluence content property that carries the hash
 	// of the body this application last published. It lives on the page, not in
 	// the container: nothing about the last publication survives a restart
@@ -125,7 +125,7 @@ func contentHash(body string) string {
 // renderStorageFormat builds Confluence Storage Format HTML (§20).
 func renderStorageFormat(snapshot *shared.NormalizedInventory) string {
 	var buf bytes.Buffer
-	buf.WriteString(`<h1>VM Directory</h1>`)
+	buf.WriteString(`<h1>VM Inventory</h1>`)
 	buf.WriteString(`<p>Active inventory includes resources observed during the eight hours before publication.</p>`)
 	buf.WriteString(`<ac:structured-macro ac:name="toc"/>`)
 

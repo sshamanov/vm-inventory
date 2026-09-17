@@ -3,9 +3,8 @@
 # Usage:
 #   PROMETHEUS_URL=http://prometheus:9090 \
 #   CONFLUENCE_URL=https://confluence.internal \
-#   CONFLUENCE_USERNAME=inventory-bot \
-#   CONFLUENCE_PASSWORD=<token> \
-#   CONFLUENCE_SPACE_KEY=INFRA \
+#   CONFLUENCE_TOKEN=<personal access token> \
+#   CONFLUENCE_PAGE_ID=123456 \
 #   docker-compose -f docker-compose.backend.yml up -d
 
 version: "3.8"
@@ -20,7 +19,6 @@ services:
     environment:
       - PROMETHEUS_URL=${PROMETHEUS_URL:?PROMETHEUS_URL is required}
       - CONFLUENCE_URL=${CONFLUENCE_URL:-}
-      - CONFLUENCE_USERNAME=${CONFLUENCE_USERNAME:-}
-      - CONFLUENCE_PASSWORD=${CONFLUENCE_PASSWORD:-}
-      - CONFLUENCE_SPACE_KEY=${CONFLUENCE_SPACE_KEY:-}
+      - CONFLUENCE_TOKEN=${CONFLUENCE_TOKEN:-}
+      - CONFLUENCE_PAGE_ID=${CONFLUENCE_PAGE_ID:-}
     restart: unless-stopped
