@@ -259,6 +259,10 @@ async function doPublish() {
       statusEl.dataset.stale = "1";
     } else if (result.status === "published") {
       statusEl.textContent = "Published to Confluence";
+    } else if (result.status === "unchanged") {
+      // The page already holds this inventory, so nothing was written and no
+      // watcher was notified. Saying "published" here would be a lie (§17.3).
+      statusEl.textContent = "Confluence page already up to date";
     } else {
       statusEl.textContent = `Publish: ${result.status}`;
     }

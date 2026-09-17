@@ -13,14 +13,12 @@ type Config struct {
 	ConfluencePageID string // Confluence page ID (CONFLUENCE_PAGE_ID env)
 	UIPassword         string // simple password gate for UI (UI_PASSWORD env)
 	ListenAddr         string
-	StatePath          string
 }
 
 // LoadConfig reads configuration from environment variables.
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		ListenAddr: ":8080",
-		StatePath:  "/data/state.json",
 	}
 
 	cfg.PrometheusURL = os.Getenv("PROMETHEUS_URL")
@@ -35,9 +33,6 @@ func LoadConfig() (*Config, error) {
 
 	if addr := os.Getenv("LISTEN_ADDR"); addr != "" {
 		cfg.ListenAddr = addr
-	}
-	if path := os.Getenv("STATE_PATH"); path != "" {
-		cfg.StatePath = path
 	}
 
 	return cfg, nil

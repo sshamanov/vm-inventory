@@ -158,11 +158,7 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	st, err := h.stateStore.Load()
-	if err != nil {
-		h.logger.Error("failed to load state", "error", err)
-		st = &state.State{SchemaVersion: 1}
-	}
+	st := h.stateStore.Load()
 	cacheTime := h.lastRefresh
 	if cacheTime.IsZero() {
 		cacheTime = time.Now().UTC()
@@ -246,7 +242,7 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Persist last successful refresh atomically.
+	// Record the successful refresh for the status endpoint.
 	h.stateStore.Update(func(st *state.State) (*state.State, error) {
 		now := time.Now()
 		st.LastSuccessfulRefresh = &now
@@ -293,7 +289,8 @@ func (h *Handler) handlePublish(w http.ResponseWriter, r *http.Request) {
 
 	result := h.publisher.Publish(r.Context())
 
-	// Record publication result in state.
+	// Record the publication result for the status endpoint. It is process-local
+	// (§20): the page itself carries what was published.
 	h.stateStore.Update(func(st *state.State) (*state.State, error) {
 		now := time.Now()
 		st.LastConfluenceUpdate = &now

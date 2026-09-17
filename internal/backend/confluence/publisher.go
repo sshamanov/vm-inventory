@@ -3,6 +3,7 @@ package confluence
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -22,7 +23,17 @@ type PublishResult string
 
 const (
 	Published PublishResult = "published"
+	Unchanged PublishResult = "unchanged"
 	Failed    PublishResult = "failed"
+)
+
+const (
+	pageTitle = "VM Directory"
+	// hashPropertyKey is the Confluence content property that carries the hash
+	// of the body this application last published. It lives on the page, not in
+	// the container: nothing about the last publication survives a restart
+	// locally, so a replaced or duplicated backend reads the same answer (§20).
+	hashPropertyKey = "inventory-hash"
 )
 
 // Publisher orchestrates Confluence page publication.
@@ -55,19 +66,60 @@ func NewPublisher(
 	}
 }
 
-// Publish runs the publication flow: render current snapshot and update the Confluence page.
+// Publish runs the publication flow (§19): render the current snapshot, ask
+// Confluence what it already holds, and rewrite the page only when the content
+// differs. The unchanged case is the common one — most publications run on a
+// schedule against an inventory that has not moved — and skipping it is the
+// whole point of the hash, since every write bumps the page version and
+// notifies its watchers.
 func (p *Publisher) Publish(ctx context.Context) PublishResult {
 	snapshot := p.normalizer.BuildConfluenceSnapshot()
 	body := renderStorageFormat(snapshot)
+	hash := contentHash(body)
 
-	p.logger.Info("publishing to Confluence", "page", p.pageID)
-	if err := p.updatePage(ctx, p.pageID, "VM Directory", body); err != nil {
+	pageVersion, err := p.currentVersion(ctx)
+	if err != nil {
 		p.logger.Error("confluence publish failed", "error", err, "page", p.pageID)
 		return Failed
 	}
 
-	p.logger.Info("confluence page published", "page", p.pageID)
+	stored, propVersion, found, err := p.storedHash(ctx)
+	if err != nil {
+		p.logger.Error("confluence publish failed", "error", err, "page", p.pageID)
+		return Failed
+	}
+	if found && stored == hash {
+		p.logger.Info("confluence page unchanged", "page", p.pageID, "hash", hash)
+		return Unchanged
+	}
+
+	p.logger.Info("publishing to Confluence", "page", p.pageID, "hash", hash)
+	if err := p.putPage(ctx, pageVersion, pageTitle, body); err != nil {
+		p.logger.Error("confluence publish failed", "error", err, "page", p.pageID)
+		return Failed
+	}
+
+	// The page is the artifact; the property only records what was published.
+	// A property write that fails leaves the published content correct and costs
+	// one redundant write next time, so it is reported as a failure rather than
+	// swallowed, but the page is never rolled back to hide it.
+	if err := p.writeHash(ctx, hash, propVersion); err != nil {
+		p.logger.Error("confluence page updated but hash not recorded", "error", err, "page", p.pageID)
+		return Failed
+	}
+
+	p.logger.Info("confluence page published", "page", p.pageID, "version", pageVersion+1)
 	return Published
+}
+
+// contentHash hashes the rendered body, not the snapshot behind it. A renderer
+// change — a new column, a relabelled heading — therefore counts as a change and
+// republishes, which is what §19.4 wants: hashing the snapshot instead would pin
+// the page to whatever layout was live the first time, because the inventory
+// underneath never moved.
+func contentHash(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return fmt.Sprintf("%x", sum)
 }
 
 // renderStorageFormat builds Confluence Storage Format HTML (§20).
@@ -188,35 +240,101 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %s", float64(bytes)/float64(div), units[exp])
 }
 
-// updatePage updates a Confluence page by ID.
-func (p *Publisher) updatePage(ctx context.Context, pageID, title, body string) error {
-	// Fetch current version.
-	getURL := fmt.Sprintf("%s/rest/api/content/%s?expand=version", p.confluenceURL, pageID)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
+// currentVersion returns the page's current version number, whose successor the
+// next write must claim (§19.4).
+func (p *Publisher) currentVersion(ctx context.Context) (int, error) {
+	getURL := fmt.Sprintf("%s/rest/api/content/%s?expand=version", p.confluenceURL, p.pageID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, getURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("building version request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Accept", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("fetching version: %w", err)
+		return 0, fmt.Errorf("fetching version: %w", err)
 	}
-	var page struct{ Version struct{ Number int `json:"number"` } `json:"version"` }
-	if resp.StatusCode == http.StatusOK {
-		json.NewDecoder(resp.Body).Decode(&page)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("fetching version: %d %s", resp.StatusCode, string(errBody))
 	}
-	resp.Body.Close()
+	var page struct {
+		Version struct {
+			Number int `json:"number"`
+		} `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		return 0, fmt.Errorf("decoding version: %w", err)
+	}
+	return page.Version.Number, nil
+}
 
+// storedHash reads the hash this application recorded for the page. A page that
+// this application has never published has no such property, and neither has one
+// whose property API refuses to answer: both are reported as "not found" so the
+// page is rewritten. Refusing to publish because bookkeeping is unreadable would
+// be the worse failure.
+func (p *Publisher) storedHash(ctx context.Context) (string, int, bool, error) {
+	url := fmt.Sprintf("%s/rest/api/content/%s/property/%s", p.confluenceURL, p.pageID, hashPropertyKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("building property request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", 0, false, fmt.Errorf("reading published hash: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return "", 0, false, nil
+	case resp.StatusCode != http.StatusOK:
+		p.logger.Warn("published hash unreadable, publishing", "status", resp.StatusCode, "page", p.pageID)
+		return "", 0, false, nil
+	}
+
+	var prop struct {
+		Value struct {
+			Hash string `json:"hash"`
+		} `json:"value"`
+		Version struct {
+			Number int `json:"number"`
+		} `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&prop); err != nil {
+		p.logger.Warn("published hash unparsable, publishing", "error", err, "page", p.pageID)
+		return "", 0, false, nil
+	}
+	if prop.Value.Hash == "" {
+		return "", 0, false, nil
+	}
+	return prop.Value.Hash, prop.Version.Number, true, nil
+}
+
+// putPage writes the rendered body as the page's next version.
+func (p *Publisher) putPage(ctx context.Context, version int, title, body string) error {
 	payload := map[string]interface{}{
-		"version": map[string]interface{}{"number": page.Version.Number + 1},
+		"version": map[string]interface{}{"number": version + 1},
 		"title":   title,
 		"type":    "page",
 		"body":    map[string]interface{}{"storage": map[string]interface{}{"value": body, "representation": "storage"}},
 	}
-	pl, _ := json.Marshal(payload)
-	putURL := fmt.Sprintf("%s/rest/api/content/%s", p.confluenceURL, pageID)
-	req, _ = http.NewRequestWithContext(ctx, http.MethodPut, putURL, bytes.NewReader(pl))
+	pl, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encoding page: %w", err)
+	}
+	putURL := fmt.Sprintf("%s/rest/api/content/%s", p.confluenceURL, p.pageID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, putURL, bytes.NewReader(pl))
+	if err != nil {
+		return fmt.Errorf("building page request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = p.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("updating page: %w", err)
 	}
@@ -224,6 +342,38 @@ func (p *Publisher) updatePage(ctx context.Context, pageID, title, body string) 
 	if resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("update failed: %d %s", resp.StatusCode, string(errBody))
+	}
+	return nil
+}
+
+// writeHash records the published hash as a content property on the page.
+// Content properties carry their own version chain, so the number is the stored
+// property's successor; a fresh property starts at 1.
+func (p *Publisher) writeHash(ctx context.Context, hash string, propVersion int) error {
+	payload := map[string]interface{}{
+		"key":     hashPropertyKey,
+		"value":   map[string]string{"hash": hash},
+		"version": map[string]int{"number": propVersion + 1},
+	}
+	pl, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encoding property: %w", err)
+	}
+	url := fmt.Sprintf("%s/rest/api/content/%s/property/%s", p.confluenceURL, p.pageID, hashPropertyKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(pl))
+	if err != nil {
+		return fmt.Errorf("building property request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("recording published hash: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		errBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("recording published hash: %d %s", resp.StatusCode, string(errBody))
 	}
 	return nil
 }

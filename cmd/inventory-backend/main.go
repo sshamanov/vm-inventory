@@ -40,10 +40,7 @@ func main() {
 		logger.Warn("Prometheus is not reachable, starting with empty cache")
 	}
 
-	stateStore := state.NewStore(cfg.StatePath)
-	if _, err := stateStore.Load(); err != nil {
-		logger.Warn("failed to load state, starting fresh", "error", err)
-	}
+	stateStore := state.NewStore()
 
 	obsIndex := index.NewObservationIndex()
 

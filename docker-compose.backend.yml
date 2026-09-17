@@ -23,9 +23,4 @@ services:
       - CONFLUENCE_USERNAME=${CONFLUENCE_USERNAME:-}
       - CONFLUENCE_PASSWORD=${CONFLUENCE_PASSWORD:-}
       - CONFLUENCE_SPACE_KEY=${CONFLUENCE_SPACE_KEY:-}
-    volumes:
-      - inventory-data:/data
     restart: unless-stopped
-
-volumes:
-  inventory-data:
