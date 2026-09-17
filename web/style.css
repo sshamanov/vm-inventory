@@ -341,10 +341,6 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
 .spec-link:hover { border-bottom-color: currentColor; }
 .spec-link .ico-ext { width: 10px; height: 10px; }
 
-/* Compact the masthead once the page is scrolled. */
-.masthead.is-scrolled .brand-sub { display: none; }
-.masthead.is-scrolled .masthead-in { padding-top: 8px; }
-
 /* --- Stat rail ---------------------------------------------------------- */
 
 .rail {
@@ -625,23 +621,25 @@ html[data-theme="dark"]  .ico-sun  { display: none; }
   background: var(--surface);
 }
 
-/* Once the table fits, the wrapper stops being a scroll container, which is
-   what lets the header stick to the viewport instead of to a box that never
-   scrolls vertically. */
-@media (min-width: 1280px) {
-  .table-scroll { overflow-x: visible; }
-}
+/* A wrapper whose table fits its column is marked by the script, and only then
+   does it stop being a scroll container — which is what lets the header stick
+   to the viewport. Inside a scroll container `top` is measured from that box's
+   own scrollport, and the box never scrolls vertically, so a sticky header
+   would park that far down the table instead of under the masthead. */
+.table-scroll[data-fits="1"] { overflow-x: visible; }
 
 table { width: 100%; border-collapse: collapse; font-size: .76rem; }
 
 thead th {
-  position: sticky; top: var(--masthead-h, 62px); z-index: 2;
   background: var(--surface-2);
   font-family: var(--font-mono); font-size: .57rem; font-weight: 500;
   letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
   text-align: left; white-space: nowrap;
   padding: 9px 10px;
   border-bottom: 1px solid var(--rule);
+}
+.table-scroll[data-fits="1"] thead th {
+  position: sticky; top: var(--masthead-h, 62px); z-index: 2;
 }
 
 tbody td {

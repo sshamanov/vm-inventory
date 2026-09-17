@@ -16,7 +16,7 @@ const WINDOWS = ["now", "month", "all"];
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
-  initScroll();
+  initMastheadHeight();
   initWindowSwitch();
   authToken = localStorage.getItem("inv-auth") || "";
   if (!authToken) {
@@ -28,10 +28,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("search").addEventListener("input", debounce(onSearch, 200));
   document.getElementById("geos").addEventListener("click", onFoldClick);
 
-  // The card floor is measured from rendered text, so it has to be taken again
-  // once the real font replaces the fallback and whenever lines re-wrap.
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(levelHostHeights);
-  window.addEventListener("resize", debounce(levelHostHeights, 150));
+  // The card floor and the table fit are both measured from rendered text, so
+  // they have to be taken again once the real font replaces the fallback and
+  // whenever lines re-wrap.
+  const remeasure = () => { levelHostHeights(); syncTableFits(); };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(remeasure);
+  window.addEventListener("resize", debounce(remeasure, 150));
 });
 
 // --- Theme ---
@@ -68,25 +70,21 @@ function initTheme() {
   if (mq.addEventListener) mq.addEventListener("change", onScheme);
 }
 
-function initScroll() {
+function initMastheadHeight() {
   const header = document.getElementById("header");
   const root = document.documentElement;
-  let ticking = false;
-  const apply = () => {
-    header.classList.toggle("is-scrolled", window.scrollY > 6);
-    // The sticky table header parks under the masthead, which changes height
-    // when it compacts, so the offset is measured rather than hard-coded.
-    root.style.setProperty("--masthead-h", `${header.offsetHeight}px`);
-    ticking = false;
-  };
-  const queue = () => {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(apply);
-  };
-  window.addEventListener("scroll", queue, { passive: true });
-  window.addEventListener("resize", queue);
-  apply();
+  // Every sticky table header parks under the masthead, so it needs the height
+  // the masthead actually has. That height follows the width (the controls
+  // re-wrap) and the filter text, so the box is watched rather than the scroll
+  // position: a scroll listener would have to re-measure on every frame, and a
+  // per-frame measurement forces a full layout pass.
+  const sync = () => root.style.setProperty("--masthead-h", `${header.offsetHeight}px`);
+  sync();
+  if (window.ResizeObserver) new ResizeObserver(sync).observe(header);
+  else {
+    window.addEventListener("resize", debounce(sync, 150));
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(sync);
+  }
 }
 
 // --- View window ---
@@ -547,6 +545,20 @@ function applyFilter() {
   // Only level while the whole board is visible: hidden cards measure as zero,
   // so a filtered board would set the floor from a subset.
   if (!filterActive) levelHostHeights();
+  syncTableFits();
+}
+
+// A table that fits its column does not need the sideways scroller, and only
+// while it is not one can its header stick to the viewport (styles.css). Which
+// tables those are depends on the viewport and on how long the longest visible
+// cell is, so it is measured after every render and filter instead of guessed
+// from a breakpoint.
+function syncTableFits() {
+  for (const wrap of document.querySelectorAll(".table-scroll")) {
+    const table = wrap.querySelector("table");
+    if (!table || !wrap.offsetParent) continue;
+    wrap.dataset.fits = table.scrollWidth <= wrap.clientWidth + 1 ? "1" : "0";
+  }
 }
 
 // Each geo is its own grid, so a geo whose tallest card is short would draw
