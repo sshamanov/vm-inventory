@@ -291,10 +291,37 @@ func (n *Normalizer) buildGeos(
 			}
 		}
 
+		// Resources come back grouped by host but in map order, which differs
+		// between calls. Sorting by host then name is what §5.2 asks for, and it
+		// is what makes a rendered page stable enough to hash (§19.4): without
+		// it the same inventory renders in a different row order every time and
+		// no two publications can ever compare equal.
+		sort.Slice(geo.VirtualMachines, func(i, j int) bool {
+			a, b := geo.VirtualMachines[i], geo.VirtualMachines[j]
+			return byHostThenName(a.HostID, a.Name, a.InventoryID, b.HostID, b.Name, b.InventoryID)
+		})
+		sort.Slice(geo.LXDContainers, func(i, j int) bool {
+			a, b := geo.LXDContainers[i], geo.LXDContainers[j]
+			return byHostThenName(a.HostID, a.Name, a.InventoryID, b.HostID, b.Name, b.InventoryID)
+		})
+
 		geos = append(geos, geo)
 	}
 
 	return geos
+}
+
+// byHostThenName orders resources by host, then name, with the stable identity
+// as the final tie-breaker so two instances sharing a name on one host still
+// render in a fixed order.
+func byHostThenName(aHost, aName, aID, bHost, bName, bID string) bool {
+	if aHost != bHost {
+		return aHost < bHost
+	}
+	if aName != bName {
+		return aName < bName
+	}
+	return aID < bID
 }
 
 // resourceKey identifies a resource by what survives a re-labelling: the host it
