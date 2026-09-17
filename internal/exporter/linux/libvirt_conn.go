@@ -79,13 +79,20 @@ func (c *virshConn) domainInfo(ctx context.Context, uuid string) (LibvirtDomain,
 		d.IPs = parseIPs(ifaces)
 	}
 
-	// Guest OS. Prefer the human-readable pretty-name, fall back to the short name.
+	// Guest OS. Precedence per ARCHITECTURE.md §10.2: the QEMU guest agent, then
+	// libvirt domain metadata, otherwise unavailable. The agent reports the OS
+	// actually installed, so it wins; the metadata records the OS the domain was
+	// created for, which is all that remains when no agent runs in the guest.
+	// Prefer the human-readable pretty-name, fall back to the short name.
 	guestOS := c.virshIgnoreError(ctx, "qemu-agent-command", uuid, `{"execute":"guest-get-osinfo"}`)
 	if guestOS != "" {
 		d.GuestOS = extractJSON(guestOS, "pretty-name")
 		if d.GuestOS == "" {
 			d.GuestOS = extractJSON(guestOS, "name")
 		}
+	}
+	if d.GuestOS == "" {
+		d.GuestOS = domainMetadataOS(c.virshIgnoreError(ctx, "dumpxml", uuid))
 	}
 
 	return d, nil
