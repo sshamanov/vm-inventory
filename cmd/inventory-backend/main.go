@@ -12,7 +12,6 @@ import (
 	"vm-inventory/internal/backend"
 	"vm-inventory/internal/backend/api"
 	"vm-inventory/internal/backend/confluence"
-	"vm-inventory/internal/backend/history"
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/prometheus"
 	"vm-inventory/internal/backend/state"
@@ -136,8 +135,10 @@ func main() {
 	// away, so the wider views have something to dim. This is several Prometheus
 	// subqueries over the retention window; the UI serves from the index while
 	// they run and picks up what they find when the rebuild below lands (§15.4).
+	// The same pass runs at the end of every refresh, so an instance that departs
+	// later is caught by the refresh that follows it rather than only at startup.
 	go func() {
-		history.Backfill(refreshCtx, promClient, obsIndex, logger)
+		handler.BackfillHistory(refreshCtx)
 		handler.MarkRefreshed()
 		logger.Info("history backfill complete",
 			"hosts", obsIndex.HostCount(), "resources", obsIndex.ResourceCount(),
@@ -195,6 +196,12 @@ func main() {
 				st.LastSuccessfulRefresh = &now
 				return st, nil
 			})
+
+			// The query above sees only what is being scraped now, so a host
+			// that has gone away since the last cycle is found only here. Same
+			// pass as the button runs, so both triggers recover a departure
+			// (§15.4).
+			handler.BackfillHistory(refreshCtx)
 			handler.MarkRefreshed()
 		}
 	}()

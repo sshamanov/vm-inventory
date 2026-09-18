@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"vm-inventory/internal/backend/confluence"
+	"vm-inventory/internal/backend/history"
 	"vm-inventory/internal/backend/index"
 	"vm-inventory/internal/backend/normalizer"
 	"vm-inventory/internal/backend/prometheus"
@@ -37,6 +39,7 @@ type Handler struct {
 	confluenceURL string
 	snapshotMu    sync.Mutex // serializes refresh
 	publishMu     sync.Mutex // serializes publication
+	historyMu     sync.Mutex // serializes the history backfill
 	views         map[string]cachedView
 	cacheMu       sync.RWMutex
 	lastRefresh   time.Time
@@ -69,6 +72,26 @@ func NewHandler(
 func (h *Handler) MarkRefreshed() {
 	h.rebuildViews()
 	h.lastRefresh = time.Now()
+}
+
+// BackfillHistory asks Prometheus which instances were collected at some point
+// in the retention window and merges the ones that have gone away into the
+// index (§15.4). The live refresh cannot find them — an instant query sees only
+// what is scraped now — so this is the half of a refresh that remembers
+// departures, and without it the wider views have nothing to dim and a host that
+// stops reporting is simply absent everywhere.
+//
+// It runs on every refresh trigger: at startup, on the periodic cycle, and on
+// the button. A second caller arriving while one pass is running returns at
+// once, since a pass covers the whole window and the index merges by last-seen.
+// The caller rebuilds the views afterwards (MarkRefreshed).
+func (h *Handler) BackfillHistory(ctx context.Context) {
+	if !h.historyMu.TryLock() {
+		return
+	}
+	defer h.historyMu.Unlock()
+
+	history.Backfill(ctx, h.promClient, h.idx, h.logger)
 }
 
 // RegisterRoutes registers all HTTP routes on the given mux.
@@ -206,11 +229,11 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// Re-read what Prometheus is scraping now. Nothing is cleared first: an
 	// instant query cannot see an instance that has stopped being scraped, so
-	// emptying the index would retire every departed host and resource — and
-	// only to lose them from the wider views too, since the history backfill
-	// (§15.4) runs at process start rather than on demand. Discarding the
-	// detail fields that are merged rather than assigned keeps the parts of the
-	// index that are rebuilt from live series from going stale.
+	// emptying the index would retire every departed host and resource. The
+	// history pass below is what finds departures; this one only refreshes what
+	// is still reporting. Discarding the detail fields that are merged rather
+	// than assigned keeps the parts of the index that are rebuilt from live
+	// series from going stale.
 	h.idx.ResetHostDetailFields()
 	ctx := r.Context()
 	qr, err := h.promClient.QueryInstant(ctx, prometheus.QueryAllInventory())
@@ -254,6 +277,12 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		st.LastSuccessfulRefresh = &now
 		return st, nil
 	})
+
+	// Recheck the history too, for the same reason the background cycle does: a
+	// button pressed after a host went away has to bring it back as retained.
+	// The caller waits for the pass, so that a successful refresh means the
+	// snapshot the UI reloads next is already complete.
+	h.BackfillHistory(ctx)
 
 	// Rebuild cached snapshots after refresh.
 	h.rebuildViews()
