@@ -204,8 +204,14 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.snapshotMu.Unlock()
 
-	// Clear and rebuild observation index from Prometheus.
-	h.idx.Clear()
+	// Re-read what Prometheus is scraping now. Nothing is cleared first: an
+	// instant query cannot see an instance that has stopped being scraped, so
+	// emptying the index would retire every departed host and resource — and
+	// only to lose them from the wider views too, since the history backfill
+	// (§15.4) runs at process start rather than on demand. Discarding the
+	// detail fields that are merged rather than assigned keeps the parts of the
+	// index that are rebuilt from live series from going stale.
+	h.idx.ResetHostDetailFields()
 	ctx := r.Context()
 	qr, err := h.promClient.QueryInstant(ctx, prometheus.QueryAllInventory())
 	if err != nil {
