@@ -63,7 +63,6 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest
-            ${{ env.IMAGE_PREFIX }}/inventory-exporter:${{ github.sha }}
           cache-from: type=gha,scope=exporter
           cache-to: type=gha,scope=exporter,mode=min
 
@@ -76,7 +75,6 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
-            ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=min
 
