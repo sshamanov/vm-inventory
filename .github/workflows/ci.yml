@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
@@ -14,6 +18,7 @@ env:
 jobs:
   binaries:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -35,12 +40,14 @@ jobs:
             -o bin/inventory-backend ./cmd/inventory-backend/
 
       - name: Upload exporter binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: inventory-exporter
           path: bin/inventory-exporter
 
       - name: Upload backend binary
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: inventory-backend
@@ -48,7 +55,9 @@ jobs:
 
   docker:
     needs: binaries
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -86,6 +95,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:${{ github.sha }}
+          cache-from: type=gha,scope=exporter
+          cache-to: type=gha,scope=exporter,mode=min
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
@@ -96,6 +107,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
             ${{ env.IMAGE_PREFIX }}/inventory-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=min
 
       - name: Upload binaries to file service
         if: ${{ github.event_name == 'push' && env.FILESERVICE_URL != '' }}
