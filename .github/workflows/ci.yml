@@ -61,6 +61,7 @@ jobs:
           context: .
           file: docker/exporter.Dockerfile
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-exporter:latest
           cache-from: type=gha,scope=exporter
@@ -73,6 +74,7 @@ jobs:
           context: .
           file: docker/backend.Dockerfile
           push: true
+          provenance: false
           tags: |
             ${{ env.IMAGE_PREFIX }}/inventory-backend:latest
           cache-from: type=gha,scope=backend
