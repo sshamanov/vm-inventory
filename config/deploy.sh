@@ -1,18 +1,23 @@
 #!/bin/sh
 # Inventory Exporter Deployment Script — one command to install everything.
-# Built by CI, pushed to bin-server as inventory-exporter-deploy.
+# CI uploads it to the file service as inventory-exporter-deploy, with the
+# file-service URL (repo variable BIN_SERVER_URL) written in place of the
+# @BIN_SERVER_URL@ placeholder, so the published copy needs no settings.
 #
 # Usage:
-#   curl -fsSL https://files.example.com/f/inventory-exporter-deploy/raw | sh
-#   # or
-#   ./deploy.sh
+#   curl -fsSL <file-service>/f/inventory-exporter-deploy/raw | sh
+#   # or, from a checkout:
+#   BIN_SERVER_URL=<file-service> ./deploy.sh
 
 set -e
 
 BIN_DIR=${BIN_DIR:-/usr/local/bin}
 CONF_DIR=${CONF_DIR:-/etc/inventory-exporter}
 SYSTEMD_DIR=${SYSTEMD_DIR:-/etc/systemd/system}
-BIN_SERVER_URL=${BIN_SERVER_URL:-https://files.example.com}
+BIN_SERVER_URL=${BIN_SERVER_URL:-@BIN_SERVER_URL@}
+case "$BIN_SERVER_URL" in
+	@*@) echo "deploy: set BIN_SERVER_URL to the file service base URL" >&2; exit 1 ;;
+esac
 export BIN_SERVER_URL
 
 echo "=== Inventory Exporter Deploy ==="
@@ -29,7 +34,7 @@ cat > "$BIN_DIR/bin-update.sh" << 'UPDATE_EOF'
 set -e
 NAME=${1:?package name required}
 BIN=${2:?binary path required}
-URL=${BIN_SERVER_URL:-https://files.example.com}
+URL=${BIN_SERVER_URL:-@BIN_SERVER_URL@}
 REMOTE=$(curl -fsS "${URL}/f/${NAME}/hash") || { echo "bin-update: failed to fetch remote hash" >&2; exit 1; }
 if [ -f "${BIN}" ]; then
   LOCAL=$(sha256sum "${BIN}" | cut -d' ' -f1)
@@ -45,6 +50,9 @@ chmod +x "${TMP}"
 mv "${TMP}" "${BIN}"
 echo "bin-update: ${NAME} updated to ${REMOTE}"
 UPDATE_EOF
+# The updater runs from a systemd timer with no environment, so it carries the
+# file-service URL itself.
+sed -i "s#@BIN_SERVER_URL@#${BIN_SERVER_URL}#" "$BIN_DIR/bin-update.sh"
 chmod +x "$BIN_DIR/bin-update.sh"
 
 # 2. Download exporter binary.

@@ -14,6 +14,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
   FILESERVICE_URL: ${{ vars.FILESERVICE_URL }}
+  BIN_SERVER_URL: ${{ vars.BIN_SERVER_URL }}
 
 jobs:
   build:
@@ -113,5 +114,9 @@ jobs:
           upload "inventory-backend" bin/inventory-backend \
             "Processing backend — Prometheus queries, JSON API, web UI, Confluence publisher"
 
-          upload "inventory-exporter-deploy" config/deploy.sh \
+          # The published deploy script is piped straight into sh on new hosts,
+          # so it must carry the download URL rather than a placeholder.
+          : "${BIN_SERVER_URL:?repo variable BIN_SERVER_URL is not set}"
+          sed "s#@BIN_SERVER_URL@#${BIN_SERVER_URL}#g" config/deploy.sh > bin/inventory-exporter-deploy
+          upload "inventory-exporter-deploy" bin/inventory-exporter-deploy \
             "Self-contained deployment script — installs exporter + systemd units"

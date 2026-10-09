@@ -1,5 +1,5 @@
 #!/bin/sh
-# Self-update script for inventory binaries from files.example.com.
+# Self-update script for inventory binaries from the file service.
 #
 # Compares local binary hash against remote, downloads only if changed.
 # Exits 0 if up to date or download succeeds, 1 on failure.
@@ -15,7 +15,7 @@ set -e
 
 NAME=${1:?package name required}
 BIN=${2:?binary path required}
-URL=${BIN_SERVER_URL:-https://files.example.com}
+URL=${BIN_SERVER_URL:?set BIN_SERVER_URL to the file service base URL}
 
 REMOTE=$(curl -fsS "${URL}/f/${NAME}/hash") || {
   echo "bin-update: failed to fetch remote hash for ${NAME}" >&2

@@ -38,3 +38,12 @@ test-results/
 samples/lxd*.json
 .env
 node_modules/
+
+# Claude scratch and project memory (local only)
+.claude/tmp/
+.claude/memory.md
+.claude/memory/
+
+# Real addresses, host names and dumps kept for debugging (never publish)
+.private/
+CLAUDE.local.md
